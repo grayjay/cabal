@@ -68,6 +68,10 @@ tests = [
         , runTest $ mkTest db12 "baseShim5" ["D"] Nothing
         , runTest $ mkTest db12 "baseShim6" ["E"] (Just [("E", 1), ("syb", 2)])
         ]
+    , testGroup "Independent goals" [
+          runTest $ indep $ mkTest db14 "indepGoals1" ["D", "E", "F"] Nothing -- The target order is important.
+        , runTest $ indep $ mkTest db15 "indepGoals2" ["A", "B"] (Just [("A", 1), ("B", 1), ("C", 1), ("D", 1), ("D", 2), ("E", 1)])
+        ]
     ]
   where
     indep test = test { testIndepGoals = True }
@@ -343,9 +347,9 @@ db12 =
 
 -- | When both A and B are installed as independent goals, their dependencies on
 -- C must be linked. The only combination of C's flags that is consistent with
--- both A and B is -flagA +flagB. This database tests that the solver can
--- backtrack to find the right combination of flags (requiring F, but not E or G)
--- and apply it to both 0.C and 1.C.
+-- A and B's dependencies on D is -flagA +flagB. This database tests that the
+-- solver can backtrack to find the right combination of flags (requiring F, but
+-- not E or G) and apply it to both 0.C and 1.C.
 db13 :: ExampleDb
 db13 = [
     Right $ exAv "A" 1 [ExAny "C", ExFix "D" 1]
@@ -360,6 +364,36 @@ db13 = [
   , Right $ exAv "E" 1 []
   , Right $ exAv "F" 1 []
   , Right $ exAv "G" 1 []
+  ]
+
+db14 :: ExampleDb
+db14 = [
+    Right $ exAv "A" 1 [ExAny "C"]
+  , Right $ exAv "B" 1 [ExAny "C"]
+  , Right $ exAv "C" 1 []
+  , Right $ exAv "C" 2 []
+  , Right $ exAv "D" 1 [ExAny "A", ExFix "C" 1]
+  , Right $ exAv "E" 1 [ExAny "B", ExFix "C" 2]
+  , Right $ exAv "F" 1 [ExAny "A", ExAny "B"]
+  ]
+
+-- | When A and B are installed as independent goals, the single instance
+-- restriction prevents B from depending on C.  This database tests that the
+-- solver can backtrack after encountering the single instance restriction and
+-- choose the only valid flag assignment (-flagA +flagB).
+db15 :: ExampleDb
+db15 = [
+    Right $ exAv "A" 1 [ExAny "C", ExFix "D" 1]
+  , Right $ exAv "B" 1 [ ExFix "D" 2
+                       , ExFlag "flagA"
+                             [ExAny "C"]
+                             [ExFlag "flagB"
+                                 [ExAny "E"]
+                                 [ExAny "C"]]]
+  , Right $ exAv "C" 1 [ExAny "D"]
+  , Right $ exAv "D" 1 []
+  , Right $ exAv "D" 2 []
+  , Right $ exAv "E" 1 []
   ]
 
 {-------------------------------------------------------------------------------
