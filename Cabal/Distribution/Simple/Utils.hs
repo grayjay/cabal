@@ -454,17 +454,18 @@ rawSystemIOWithEnv' :: Verbosity
                    -> [String]
                    -> Maybe FilePath           -- ^ New working dir or inherit
                    -> Maybe [(String, String)] -- ^ New environment or inherit
-                   -> IO (Handle, Handle, Handle, ProcessHandle)
-rawSystemIOWithEnv' verbosity path args mcwd menv = do
+                   -> Handle
+                   -> IO (Handle, ProcessHandle)
+rawSystemIOWithEnv' verbosity path args mcwd menv out = do
     printRawCommandAndArgsAndEnv verbosity path args menv
     hFlush stdout
-    (Just inh, Just outh, Just errh, ph) <-
+    (Just inh, _, _, ph) <-
                   createProcess $
                   (Process.proc path args) { Process.cwd           = mcwd
                                            , Process.env           = menv
                                            , Process.std_in        = Process.CreatePipe
-                                           , Process.std_out       = Process.CreatePipe
-                                           , Process.std_err       = Process.CreatePipe
+                                           , Process.std_out       = Process.UseHandle out
+                                           , Process.std_err       = Process.UseHandle out
 #ifdef MIN_VERSION_process
 #if MIN_VERSION_process(1,2,0)
 -- delegate_ctlc has been added in process 1.2, and we still want to be able to
@@ -473,7 +474,7 @@ rawSystemIOWithEnv' verbosity path args mcwd menv = do
 #endif
 #endif
                                            }
-    return (inh, outh, errh, ph)
+    return (inh, ph)
 
 -- | Run a command and return its output.
 --
