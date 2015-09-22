@@ -455,15 +455,16 @@ rawSystemIOWithEnv' :: Verbosity
                    -> Maybe FilePath           -- ^ New working dir or inherit
                    -> Maybe [(String, String)] -- ^ New environment or inherit
                    -> Handle
-                   -> IO (Handle, ProcessHandle)
-rawSystemIOWithEnv' verbosity path args mcwd menv out = do
+                   -> Handle
+                   -> IO ProcessHandle
+rawSystemIOWithEnv' verbosity path args mcwd menv inh out = do
     printRawCommandAndArgsAndEnv verbosity path args menv
     hFlush stdout
-    (Just inh, _, _, ph) <-
+    (_, _, _, ph) <-
                   createProcess $
                   (Process.proc path args) { Process.cwd           = mcwd
                                            , Process.env           = menv
-                                           , Process.std_in        = Process.CreatePipe
+                                           , Process.std_in        = Process.UseHandle inh
                                            , Process.std_out       = Process.UseHandle out
                                            , Process.std_err       = Process.UseHandle out
 #ifdef MIN_VERSION_process
@@ -474,7 +475,7 @@ rawSystemIOWithEnv' verbosity path args mcwd menv out = do
 #endif
 #endif
                                            }
-    return (inh, ph)
+    return ph
 
 -- | Run a command and return its output.
 --

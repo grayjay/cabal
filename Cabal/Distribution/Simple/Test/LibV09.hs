@@ -76,10 +76,10 @@ runTest pkg_descr lbi flags suite = do
     suiteLog <- bracket openCabalTemp deleteIfExists $ \tempLog -> do
 
         (rOut, wOut) <- createPipe
+        (rIn, wIn) <- createPipe
 
         -- Run test executable
-        (inh, ph)
-          <- do let opts = map (testOption pkg_descr lbi suite) $ testOptions flags
+        ph<- do let opts = map (testOption pkg_descr lbi suite) $ testOptions flags
                     dataDirPath = pwd </> PD.dataDir pkg_descr
                     tixFile = pwd </> tixFilePath distPref way (PD.testName suite)
                     pkgPathEnv = (pkgPathEnvVar pkg_descr "datadir", dataDirPath)
@@ -98,10 +98,10 @@ runTest pkg_descr lbi flags suite = do
                                              True False lbi clbi
                                   return (addLibraryPath os paths shellEnv)
                                 else return shellEnv
-                rawSystemIOWithEnv' verbosity cmd opts Nothing (Just shellEnv') wOut
+                rawSystemIOWithEnv' verbosity cmd opts Nothing (Just shellEnv') rIn wOut
 
-        hPutStr inh $ show (tempLog, PD.testName suite)
-        hClose inh
+        hPutStr wIn $ show (tempLog, PD.testName suite)
+        hClose wIn
 
         -- Append contents of temporary log file to the final human-
         -- readable log file
