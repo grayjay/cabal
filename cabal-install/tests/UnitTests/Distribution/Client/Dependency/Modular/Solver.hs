@@ -67,6 +67,9 @@ tests = [
         , runTest $ mkTest db12 "baseShim5" ["D"] Nothing
         , runTest $ mkTest db12 "baseShim6" ["E"] (Just [("E", 1), ("syb", 2)])
         ]
+    , testGroup "Independent goals" [
+          runTest $ indep $ mkTest db13 "indepGoals" ["D", "E", "F"] Nothing -- The target order is important.
+        ]
     ]
   where
     indep test = test { testIndepGoals = True }
@@ -339,6 +342,17 @@ db12 =
     , Right $ exAv "D" 1 [ExFix "base" 3, ExFix "syb" 2]
     , Right $ exAv "E" 1 [ExFix "base" 4, ExFix "syb" 2]
     ]
+
+db13 :: ExampleDb
+db13 = [
+    Right $ exAv "A" 1 [ExAny "C"]
+  , Right $ exAv "B" 1 [ExAny "C"]
+  , Right $ exAv "C" 1 []
+  , Right $ exAv "C" 2 []
+  , Right $ exAv "D" 1 [ExAny "A", ExFix "C" 1]
+  , Right $ exAv "E" 1 [ExAny "B", ExFix "C" 2]
+  , Right $ exAv "F" 1 [ExAny "A", ExAny "B"]
+  ]
 
 {-------------------------------------------------------------------------------
   Test options
