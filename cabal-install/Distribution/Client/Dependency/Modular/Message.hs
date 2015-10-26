@@ -13,7 +13,7 @@ import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.Tree
 import Distribution.Client.Dependency.Types
-         ( ConstraintSource(..), showConstraintSource )
+         ( ConstraintSource(..), showConstraintSource, showInstallPlanScore )
 
 data Message =
     Enter           -- ^ increase indentation level
@@ -123,6 +123,7 @@ showFR _ (BuildFailureNotInIndex pn)      = " (unknown package: " ++ display pn 
 showFR c Backjump                         = " (backjumping, conflict set: " ++ showCS c ++ ")"
 showFR _ MultipleInstances                = " (multiple instances)"
 showFR c (DependenciesNotLinked msg)      = " (dependencies not linked: " ++ msg ++ "; conflict set: " ++ showCS c ++ ")"
+showFR _ (ExceedsMaxScore score)          = " (exceeds max score: " ++ showInstallPlanScore score ++ ")"
 -- The following are internal failures. They should not occur. In the
 -- interest of not crashing unnecessarily, we still just print an error
 -- message though.
