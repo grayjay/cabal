@@ -128,9 +128,9 @@ pruneWithMaxScore maxScore = (`runReader` initSS) . cata go
                     -> WeightedPSQ w k (PruneWithScore (Tree a QGoalReasonChain))
                     -> PruneWithScore (WeightedPSQ w k (Tree a QGoalReasonChain))
     processChildren var gr cs =
-      let processChild c i = scoreOrPrune var gr (i == 0) (score i) c
-          score i = fromIntegral i / fromIntegral (W.length cs)
-      in  T.traverse (uncurry processChild) (W.zipWithIndex cs)
+      let processChild c i = scoreOrPrune var gr (i == 0) (fromIntegral i / l) c
+          l = fromIntegral (W.length cs)
+      in  l `seq` T.traverse (uncurry processChild) (W.zipWithIndex cs)
 
     scoreOrPrune :: Var QPN
                  -> QGoalReasonChain
