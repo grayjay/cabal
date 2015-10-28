@@ -349,7 +349,6 @@ planPackages comp platform mSandboxPkgInfo solver
 
     >>= if onlyDeps then pruneInstallPlan pkgSpecifiers else return
 
-
   where
     resolverParams =
 

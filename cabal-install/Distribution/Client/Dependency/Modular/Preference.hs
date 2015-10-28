@@ -36,12 +36,12 @@ import Distribution.Client.Dependency.Modular.Version
 addWeight :: (PN -> [Version] -> POption -> Weight) -> Tree a b -> Tree a b
 addWeight f = trav go
   where
-    go (PChoiceF v@(Q _ pn) r cs) =
+    go (PChoiceF qpn@(Q _ pn) x cs) =
       let sortedVersions = L.sortBy (flip compare) $ L.map version (W.keys cs)
           forceWeights psq = sum (concat (W.weights psq)) `seq` psq
-      in  PChoiceF v r $ forceWeights $
+      in  PChoiceF qpn x $ forceWeights $
           W.mapWeightsWithKey ((:) . f pn sortedVersions) cs
-    go x                          = x
+    go x                            = x
 
 version :: POption -> Version
 version (POption (I v _) _) = v
@@ -90,7 +90,7 @@ preferPackagePreferences pcs =
     -- Prefer installed packages over non-installed packages.
     installed :: POption -> Weight
     installed (POption (I _ (Inst _)) _) = 0
-    installed _              = 1
+    installed _                          = 1
 
 data ScoringState = ScoringState {
       -- | The sum of the scores of all nodes from the root to the current node.
@@ -146,7 +146,7 @@ pruneWithMaxScore maxScore = (`runReader` initSS) . cata go
               else insertCS var ConflictLessThan $
                    unionCS (goalReasonChainToVars gr) (ssConflictSet ss)
           ss' = ScoringState total conflictSet
-      in if total `seq` maybe False (total >) maxScore
+      in if maybe False (total >) maxScore
            then return $ Fail conflictSet (ExceedsMaxScore total)
            else local (const ss') r
 

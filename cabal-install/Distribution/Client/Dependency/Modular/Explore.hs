@@ -46,12 +46,12 @@ backjump = snd . cata go
                                 d : _ -> d
 
 -- | The 'combine' function is at the heart of backjumping. It takes
--- the variable we're currently considering, and a list of children
--- annotated with their respective conflict sets, and an accumulator
--- for the result conflict set. It returns a combined conflict set
--- for the parent node, and a (potentially shortened) list of children
--- with the annotations removed. We keep all children that have been
--- traversed, so that they can appear in the log.
+-- the variable we're currently considering and a list of children
+-- annotated with their respective conflict sets. It returns a
+-- combined conflict set for the parent node, and a (potentially
+-- shortened) list of children with the annotations removed. We keep
+-- all children that have been traversed, so that they can appear in
+-- the log.
 --
 -- It is *essential* that we produce the results as early as possible.
 -- In particular, we have to produce the list of children prior to
@@ -95,11 +95,11 @@ combine var children = (cs, fmap snd traversed)
 
 -- | Naive backtracking exploration of the search tree. This will yield correct
 -- assignments only once the tree itself is validated.
-explore :: Alternative m => Tree a b -> (Assignment -> m (Assignment, RevDepMap))
+explore :: Alternative m => Tree a b -> (Assignment -> m (Assignment, RevDepMap, a))
 explore = cata go
   where
     go (FailF _ _)           _           = A.empty
-    go (DoneF rdm _)         a           = pure (a, rdm)
+    go (DoneF rdm s)         a           = pure (a, rdm, s)
     go (PChoiceF qpn _     ts) (A pa fa sa)   =
       asum $                                      -- try children in order,
       W.mapWithKey                                -- when descending ...
@@ -164,7 +164,7 @@ backjumpInfo c m = m <|> case c of -- important to produce 'm' before matching o
                            Just cs -> failWith (Failure cs Backjump)
 
 -- | Interface.
-exploreTree :: Alternative m => Tree a b -> m (Assignment, RevDepMap)
+exploreTree :: Alternative m => Tree a b -> m (Assignment, RevDepMap, a)
 exploreTree t = explore t (A M.empty M.empty M.empty)
 
 -- | Interface.

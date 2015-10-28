@@ -65,7 +65,7 @@ lookup k (WeightedPSQ xs) = triple_3 `fmap` L.find ((k ==) . triple_2) xs
 -- | All elements up to and including the first element that satisfies the
 -- predicate.
 takeUntil :: (v -> Bool) -> WeightedPSQ w k v -> WeightedPSQ w k v
-takeUntil p psq = WeightedPSQ (go $ toList psq)
+takeUntil p psq = WeightedPSQ $ go (toList psq)
   where
     go [] = []
     go (x : xs) = x : if p (triple_3 x) then [] else go xs
