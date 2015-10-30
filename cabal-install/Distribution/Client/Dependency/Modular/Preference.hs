@@ -33,10 +33,14 @@ import Distribution.Client.Dependency.Modular.WeightedPSQ as W
 import Distribution.Client.Dependency.Modular.Tree
 import Distribution.Client.Dependency.Modular.Version
 
+-- | Update the weights of children under 'PChoice' nodes.
 addWeight :: (PN -> [Version] -> POption -> Weight) -> Tree a b -> Tree a b
 addWeight f = trav go
   where
     go (PChoiceF qpn@(Q _ pn) x cs) =
+      -- TODO: Inputs to 'f' shouldn't depend on the node's position in the tree.
+      -- If we continue using a list of all versions as an input, it should come
+      -- from the package index, not from the node's siblings
       let sortedVersions = L.sortBy (flip compare) $ L.map version (W.keys cs)
           forceWeights psq = sum (concat (W.weights psq)) `seq` psq
       in  PChoiceF qpn x $ forceWeights $
@@ -73,6 +77,8 @@ preferPackagePreferences pcs =
     -- lower version numbers.
     latest :: [Version] -> POption -> Weight
     latest sortedVersions pOpt =
+      -- TODO: We should probably score versions based on their release
+      -- dates.
       let index = fromJust $ L.elemIndex (version pOpt) sortedVersions
       in  fromIntegral index / L.genericLength sortedVersions
 
@@ -123,6 +129,8 @@ pruneWithMaxScore maxScore = (`runReader` initSS) . cata go
     go (DoneF revDepMap _)            = Done revDepMap <$> asks ssTotalScore
     go (FailF conflictSet failReason) = return $ Fail conflictSet failReason
 
+    -- TODO: This function should use the node's weight as its score once
+    -- weights have type 'Double'.  Score should not depend on the node's index.
     processChildren :: Var QPN
                     -> QGoalReasonChain
                     -> WeightedPSQ w k (PruneWithScore (Tree a QGoalReasonChain))

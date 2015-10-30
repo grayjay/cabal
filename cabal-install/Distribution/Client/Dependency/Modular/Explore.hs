@@ -68,6 +68,14 @@ backjump = snd . cata go
 -- (indicated by Nothing), then Nothing will be the combined
 -- conflict set. If all children contain conflict sets, we can
 -- take the union as the combined conflict set.
+
+-- TODO: I completely refactored this function, but I'm wondering if it
+-- was unnecessary. WeightedPSQ has an invariant that it is always
+-- sorted by weight, so I did not export its constructor. Then I
+-- refactored 'combine' to avoid deconstructing and reconstructing the
+-- WeightedPSQ. I couldn't call W.fromList because it would evaluate
+-- too much of the tree while re-sorting the list. Is there a way to
+-- continue using explicit recursion here?
 combine :: forall w k v . Var QPN
         -> WeightedPSQ w k (MaybeCS, v)
         -> (MaybeCS, WeightedPSQ w k v)
