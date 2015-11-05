@@ -97,28 +97,28 @@ explore = cata go
         (\ _k v _xs -> v a)                   -- commit to the first goal choice
 
 -- | Version of 'explore' that returns a 'Log'.
-exploreLog :: Tree (Maybe (ConflictSet QPN)) ->
+exploreLog :: Tree a ->
               (Assignment -> Log Message (Assignment, RevDepMap))
 exploreLog = cata go
   where
     go (FailF c fr)          _           = failWith (Failure c fr)
     go (DoneF rdm)           a           = succeedWith Success (a, rdm)
     go (PChoiceF qpn c     ts) (A pa fa sa)   =
-      backjumpInfo c $
+      backjumpInfo (Just S.empty) $
       asum $                                      -- try children in order,
       P.mapWithKey                                -- when descending ...
         (\ i@(POption k _) r -> tryWith (TryP qpn i) $     -- log and ...
                     r (A (M.insert qpn k pa) fa sa)) -- record the pkg choice
       ts
     go (FChoiceF qfn c _ _ ts) (A pa fa sa)   =
-      backjumpInfo c $
+      backjumpInfo (Just S.empty) $
       asum $                                      -- try children in order,
       P.mapWithKey                                -- when descending ...
         (\ k r -> tryWith (TryF qfn k) $          -- log and ...
                     r (A pa (M.insert qfn k fa) sa)) -- record the pkg choice
       ts
     go (SChoiceF qsn c _   ts) (A pa fa sa)   =
-      backjumpInfo c $
+      backjumpInfo (Just S.empty) $
       asum $                                      -- try children in order,
       P.mapWithKey                                -- when descending ...
         (\ k r -> tryWith (TryS qsn k) $          -- log and ...
@@ -145,5 +145,5 @@ exploreTree :: Alternative m => Tree a -> m (Assignment, RevDepMap)
 exploreTree t = explore t (A M.empty M.empty M.empty)
 
 -- | Interface.
-exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
+exploreTreeLog :: Tree a -> Log Message (Assignment, RevDepMap)
 exploreTreeLog t = exploreLog t (A M.empty M.empty M.empty)

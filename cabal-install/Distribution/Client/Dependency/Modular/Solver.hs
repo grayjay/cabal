@@ -40,7 +40,7 @@ solve sc idx userPrefs userConstraints userGoals =
   prunePhase       $
   buildPhase
   where
-    explorePhase     = exploreTreeLog . backjump
+    explorePhase     = exploreTreeLog -- . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        P.deferSetupChoices .
                        P.deferWeakFlagChoices .
