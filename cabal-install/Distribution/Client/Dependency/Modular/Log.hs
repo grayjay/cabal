@@ -19,7 +19,7 @@ import Distribution.Client.Dependency.Modular.Tree (FailReason(..))
 -- Parameterized over the type of actual messages and the final result.
 type Log m a = Progress m () a
 
-messages :: Progress a b c -> [a]
+messages :: Progress step fail done -> [step]
 messages = foldProgress (:) (const []) (const [])
 
 -- | Postprocesses a log file. Takes as an argument a limit on allowed backjumps.
@@ -80,14 +80,16 @@ logToProgress mbj l = let
     go _  _           (Done s)              = Done s
     go _  _           (Fail (_, Nothing))   = Fail ("Could not resolve dependencies; something strange happened.") -- should not happen
 
-failWith :: m -> Log m a
-failWith m = Step m (Fail ())
+failWith :: step -> fail -> Progress step fail done
+failWith s f = Step s (Fail f)
 
-succeedWith :: m -> a -> Log m a
-succeedWith m x = Step m (Done x)
+succeedWith :: step -> done -> Progress step fail done
+succeedWith s d = Step s (Done d)
 
-continueWith :: m -> Log m a -> Log m a
+continueWith :: step -> Progress step fail done -> Progress step fail done
 continueWith = Step
 
-tryWith :: Message -> Log Message a -> Log Message a
-tryWith m x = Step m (Step Enter x) <|> failWith Leave
+tryWith :: Message
+        -> Progress Message fail done
+        -> Progress Message fail done
+tryWith m = Step m . Step Enter . foldProgress Step (failWith Leave) Done
