@@ -25,9 +25,9 @@ import Distribution.Solver.Modular.Dependency
 import Distribution.Solver.Modular.Flag
 import Distribution.Solver.Modular.Index
 import Distribution.Solver.Modular.Package
-import qualified Distribution.Solver.Modular.PSQ as P
 import Distribution.Solver.Modular.Tree
 import Distribution.Solver.Modular.Version (VR)
+import qualified Distribution.Solver.Modular.WeightedPSQ as W
 
 import Distribution.Solver.Types.ComponentDeps (Component)
 
@@ -101,12 +101,12 @@ newtype Validate a = Validate (Reader ValidateState a)
 runValidate :: Validate a -> ValidateState -> a
 runValidate (Validate r) = runReader r
 
-validate :: Tree QGoalReason -> Validate (Tree QGoalReason)
+validate :: Tree a QGoalReason -> Validate (Tree a QGoalReason)
 validate = cata go
   where
-    go :: TreeF QGoalReason (Validate (Tree QGoalReason)) -> Validate (Tree QGoalReason)
+    go :: TreeF a QGoalReason (Validate (Tree a QGoalReason)) -> Validate (Tree a QGoalReason)
 
-    go (PChoiceF qpn gr     ts) = PChoice qpn gr <$> sequence (P.mapWithKey (goP qpn) ts)
+    go (PChoiceF qpn gr     ts) = PChoice qpn gr <$> sequence (W.mapWithKey (goP qpn) ts)
     go (FChoiceF qfn gr b m ts) =
       do
         -- Flag choices may occur repeatedly (because they can introduce new constraints
@@ -115,30 +115,30 @@ validate = cata go
         PA _ pfa _ <- asks pa -- obtain current flag-preassignment
         case M.lookup qfn pfa of
           Just rb -> -- flag has already been assigned; collapse choice to the correct branch
-                     case P.lookup rb ts of
+                     case W.lookup rb ts of
                        Just t  -> goF qfn rb t
                        Nothing -> return $ Fail (varToConflictSet (F qfn)) (MalformedFlagChoice qfn)
           Nothing -> -- flag choice is new, follow both branches
-                     FChoice qfn gr b m <$> sequence (P.mapWithKey (goF qfn) ts)
+                     FChoice qfn gr b m <$> sequence (W.mapWithKey (goF qfn) ts)
     go (SChoiceF qsn gr b   ts) =
       do
         -- Optional stanza choices are very similar to flag choices.
         PA _ _ psa <- asks pa -- obtain current stanza-preassignment
         case M.lookup qsn psa of
           Just rb -> -- stanza choice has already been made; collapse choice to the correct branch
-                     case P.lookup rb ts of
+                     case W.lookup rb ts of
                        Just t  -> goS qsn rb t
                        Nothing -> return $ Fail (varToConflictSet (S qsn)) (MalformedStanzaChoice qsn)
           Nothing -> -- stanza choice is new, follow both branches
-                     SChoice qsn gr b <$> sequence (P.mapWithKey (goS qsn) ts)
+                     SChoice qsn gr b <$> sequence (W.mapWithKey (goS qsn) ts)
 
     -- We don't need to do anything for goal choices or failure nodes.
     go (GoalChoiceF              ts) = GoalChoice <$> sequence ts
-    go (DoneF    rdm               ) = pure (Done rdm)
+    go (DoneF    rdm s             ) = pure (Done rdm s)
     go (FailF    c fr              ) = pure (Fail c fr)
 
     -- What to do for package nodes ...
-    goP :: QPN -> POption -> Validate (Tree QGoalReason) -> Validate (Tree QGoalReason)
+    goP :: QPN -> POption -> Validate (Tree a QGoalReason) -> Validate (Tree a QGoalReason)
     goP qpn@(Q _pp pn) (POption i _) r = do
       PA ppa pfa psa <- asks pa    -- obtain current preassignment
       extSupported   <- asks supportedExt  -- obtain the supported extensions
@@ -168,7 +168,7 @@ validate = cata go
                                     local (\ s -> s { pa = PA nppa pfa psa, saved = nsvd }) r
 
     -- What to do for flag nodes ...
-    goF :: QFN -> Bool -> Validate (Tree QGoalReason) -> Validate (Tree QGoalReason)
+    goF :: QFN -> Bool -> Validate (Tree a QGoalReason) -> Validate (Tree a QGoalReason)
     goF qfn@(FN (PI qpn _i) _f) b r = do
       PA ppa pfa psa <- asks pa -- obtain current preassignment
       extSupported   <- asks supportedExt  -- obtain the supported extensions
@@ -193,7 +193,7 @@ validate = cata go
         Right nppa  -> local (\ s -> s { pa = PA nppa npfa psa }) r
 
     -- What to do for stanza nodes (similar to flag nodes) ...
-    goS :: QSN -> Bool -> Validate (Tree QGoalReason) -> Validate (Tree QGoalReason)
+    goS :: QSN -> Bool -> Validate (Tree a QGoalReason) -> Validate (Tree a QGoalReason)
     goS qsn@(SN (PI qpn _i) _f) b r = do
       PA ppa pfa psa <- asks pa -- obtain current preassignment
       extSupported   <- asks supportedExt  -- obtain the supported extensions
@@ -261,7 +261,7 @@ extractNewDeps v b fa sa = go
                                   Just False -> []
 
 -- | Interface.
-validateTree :: CompilerInfo -> Index -> PkgConfigDb -> Tree QGoalReason -> Tree QGoalReason
+validateTree :: CompilerInfo -> Index -> PkgConfigDb -> Tree a QGoalReason -> Tree a QGoalReason
 validateTree cinfo idx pkgConfigDb t = runValidate (validate t) VS {
     supportedExt   = maybe (const True) -- if compiler has no list of extensions, we assume everything is supported
                            (\ es -> let s = S.fromList es in \ x -> S.member x s)

@@ -13,7 +13,6 @@ module Distribution.Solver.Modular.PSQ
     , filterKeys
     , firstOnly
     , fromList
-    , isZeroOrOne
     , keys
     , map
     , mapKeys
@@ -48,6 +47,8 @@ import qualified Data.List as S
 import Data.Ord (comparing)
 import Data.Traversable
 import Prelude hiding (foldr, length, lookup, filter, null, map)
+
+import Distribution.Solver.Modular.Degree
 
 newtype PSQ k v = PSQ [(k, v)]
   deriving (Eq, Show, Functor, F.Foldable, Traversable) -- Qualified Foldable to avoid issues with FTP
@@ -173,26 +174,6 @@ filter p (PSQ xs) = PSQ (S.filter (p . snd) xs)
 length :: PSQ k a -> Int
 length (PSQ xs) = S.length xs
 
--- | Approximation of the branching degree.
---
--- This is designed for computing the branching degree of a goal choice
--- node. If the degree is 0 or 1, it is always good to take that goal,
--- because we can either abort immediately, or have no other choice anyway.
---
--- So we do not actually want to compute the full degree (which is
--- somewhat costly) in cases where we have such an easy choice.
---
-data Degree = ZeroOrOne | Two | Other
-  deriving (Show, Eq)
-
-instance Ord Degree where
-  compare ZeroOrOne _         = LT -- lazy approximation
-  compare _         ZeroOrOne = GT -- approximation
-  compare Two       Two       = EQ
-  compare Two       Other     = LT
-  compare Other     Two       = GT
-  compare Other     Other     = EQ
-
 degree :: PSQ k a -> Degree
 degree (PSQ [])     = ZeroOrOne
 degree (PSQ [_])    = ZeroOrOne
@@ -201,11 +182,6 @@ degree (PSQ _)      = Other
 
 null :: PSQ k a -> Bool
 null (PSQ xs) = S.null xs
-
-isZeroOrOne :: PSQ k a -> Bool
-isZeroOrOne (PSQ [])  = True
-isZeroOrOne (PSQ [_]) = True
-isZeroOrOne _         = False
 
 firstOnly :: PSQ k a -> PSQ k a
 firstOnly (PSQ [])      = PSQ []
