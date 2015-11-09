@@ -28,6 +28,10 @@ module Distribution.Client.Dependency.Types (
     DependencyResolver,
     ResolverPackage(..),
 
+    InstallPlanScore(..),
+    showInstallPlanScore,
+    defaultInstallPlanScore,
+
     PackageConstraint(..),
     showPackageConstraint,
     PackagePreferences(..),
@@ -155,7 +159,8 @@ type DependencyResolver loc = Platform
                            -> (PackageName -> PackagePreferences)
                            -> [LabeledPackageConstraint]
                            -> [PackageName]
-                           -> Progress String String [ResolverPackage loc]
+                           -> Progress String String
+                                       ([ResolverPackage loc], InstallPlanScore)
 
 -- | The dependency resolver picks either pre-existing installed packages
 -- or it picks source packages along with package configuration.
@@ -164,6 +169,19 @@ type DependencyResolver loc = Platform
 --
 data ResolverPackage loc = PreExisting InstalledPackageInfo
                          | Configured  (SolverPackage loc)
+
+newtype InstallPlanScore = InstallPlanScore { unInstallPlanScore :: Double }
+  deriving (Eq, Ord, Num, Fractional, Generic, Show)
+
+instance Binary InstallPlanScore
+
+showInstallPlanScore :: InstallPlanScore -> String
+showInstallPlanScore (InstallPlanScore x) = show x
+
+-- | Placeholder used when no score is calculated, e.g., the score assigned by
+-- the Topdown solver.
+defaultInstallPlanScore :: InstallPlanScore
+defaultInstallPlanScore = 0
 
 -- | Per-package constraints. Package constraints must be respected by the
 -- solver. Multiple constraints for each package can be given, though obviously

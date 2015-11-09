@@ -7,6 +7,7 @@ module Distribution.Client.Dependency.Modular.Dependency (
   , varPI
     -- * Conflict sets
   , ConflictSet
+  , CS.ConflictType(..)
   , CS.showCS
     -- * Constrained instances
   , CI(..)

@@ -16,7 +16,7 @@
 module Distribution.Client.InstallPlan (
   InstallPlan,
   SolverInstallPlan,
-  GenericInstallPlan,
+  GenericInstallPlan(planScore),
   PlanPackage,
   SolverPlanPackage,
   GenericPlanPackage(..),
@@ -69,6 +69,8 @@ import Distribution.Client.Types
          , ConfiguredPackage(..), ConfiguredId(..)
          , UnresolvedPkgLoc, SolverPackage(..)
          , GenericReadyPackage(..) )
+import Distribution.Client.Dependency.Types
+         ( InstallPlanScore )
 import Distribution.Version
          ( Version )
 import Distribution.Client.ComponentDeps (ComponentDeps)
@@ -204,6 +206,7 @@ instance (HasUnitId ipkg, HasUnitId srcpkg) =>
 data GenericInstallPlan ipkg srcpkg iresult ifailure = GenericInstallPlan {
     planIndex      :: !(PlanIndex ipkg srcpkg iresult ifailure),
     planIndepGoals :: !IndependentGoals,
+    planScore      :: InstallPlanScore,
 
     -- | Cached (lazily) graph
     --
@@ -299,11 +302,13 @@ mkInstallPlan :: (HasUnitId ipkg,   PackageFixedDeps ipkg,
                   HasUnitId srcpkg, PackageFixedDeps srcpkg)
               => PlanIndex ipkg srcpkg iresult ifailure
               -> IndependentGoals
+              -> InstallPlanScore
               -> GenericInstallPlan ipkg srcpkg iresult ifailure
-mkInstallPlan index indepGoals =
+mkInstallPlan index indepGoals score =
     GenericInstallPlan {
       planIndex      = index,
       planIndepGoals = indepGoals,
+      planScore      = score,
 
       -- lazily cache the graph stuff:
       planGraph      = graph,
@@ -325,12 +330,13 @@ instance (HasUnitId ipkg,   PackageFixedDeps ipkg,
        => Binary (GenericInstallPlan ipkg srcpkg iresult ifailure) where
     put GenericInstallPlan {
               planIndex      = index,
-              planIndepGoals = indepGoals
-        } = put (index, indepGoals)
+              planIndepGoals = indepGoals,
+              planScore      = score
+        } = put (index, indepGoals, score)
 
     get = do
-      (index, indepGoals) <- get
-      return $! mkInstallPlan index indepGoals
+      (index, indepGoals, score) <- get
+      return $! mkInstallPlan index indepGoals score
 
 showPlanIndex :: (HasUnitId ipkg, HasUnitId srcpkg)
               => PlanIndex ipkg srcpkg iresult ifailure -> String
@@ -357,12 +363,13 @@ showPlanPackageTag (Failed    _   _) = "Failed"
 new :: (HasUnitId ipkg,   PackageFixedDeps ipkg,
         HasUnitId srcpkg, PackageFixedDeps srcpkg)
     => IndependentGoals
+    -> InstallPlanScore
     -> PlanIndex ipkg srcpkg iresult ifailure
     -> Either [PlanProblem ipkg srcpkg iresult ifailure]
               (GenericInstallPlan ipkg srcpkg iresult ifailure)
-new indepGoals index =
+new indepGoals score index =
   case problems indepGoals index of
-    []    -> Right (mkInstallPlan index indepGoals)
+    []    -> Right (mkInstallPlan index indepGoals score)
     probs -> Left probs
 
 toList :: GenericInstallPlan ipkg srcpkg iresult ifailure
@@ -382,7 +389,7 @@ remove :: (HasUnitId ipkg,   PackageFixedDeps ipkg,
        -> Either [PlanProblem ipkg srcpkg iresult ifailure]
                  (GenericInstallPlan ipkg srcpkg iresult ifailure)
 remove shouldRemove plan =
-    new (planIndepGoals plan) newIndex
+    new (planIndepGoals plan) (planScore plan) newIndex
   where
     newIndex = PackageIndex.fromList $
                  filter (not . shouldRemove) (toList plan)
@@ -587,6 +594,7 @@ mapPreservingGraph :: (HasUnitId ipkg,
 mapPreservingGraph f plan =
     mkInstallPlan (PackageIndex.fromList pkgs')
                   (planIndepGoals plan)
+                  (planScore plan)
   where
     -- The package mapping function may change the UnitId. So we
     -- walk over the packages in dependency order keeping track of these
