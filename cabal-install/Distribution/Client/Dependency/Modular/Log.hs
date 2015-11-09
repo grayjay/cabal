@@ -10,7 +10,7 @@ module Distribution.Client.Dependency.Modular.Log
 import Control.Applicative
 import Data.List as L
 import Data.Maybe (isNothing)
-import Data.Set as S
+import Data.Map as M
 
 import Distribution.Client.Dependency.Types -- from Cabal
 
@@ -82,7 +82,7 @@ logToProgress mbj l = let
     go ms r           (Step x xs)           = Step x (go ms r  xs)
     go ms _           (Fail (exh, Just cs)) = Fail $
                                               "Could not resolve dependencies:\n" ++
-                                              unlines (messages $ showMessages (L.foldr (\ v _ -> v `S.member` cs) True) False ms) ++
+                                              unlines (messages $ showMessages (L.foldr (\ v _ -> v `M.member` cs) True) False ms) ++
                                               (if exh then "Dependency tree exhaustively searched.\n"
                                                       else "Backjump limit reached (" ++ currlimit mbj ++
                                                                "change with --max-backjumps or try to run with --reorder-goals).\n")

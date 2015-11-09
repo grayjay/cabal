@@ -109,6 +109,7 @@ executable cabal
         Distribution.Client.Dependency.Modular.Tree
         Distribution.Client.Dependency.Modular.Validate
         Distribution.Client.Dependency.Modular.Version
+        Distribution.Client.Dependency.Modular.WeightedPSQ
         Distribution.Client.Exec
         Distribution.Client.Fetch
         Distribution.Client.FetchUtils
