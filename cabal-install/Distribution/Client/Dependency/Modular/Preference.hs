@@ -9,7 +9,6 @@ import qualified Data.Traversable as T
 #if !MIN_VERSION_base(4,8,0)
 import Control.Applicative
 #endif
-import qualified Data.Set as S
 import Prelude
 import Control.Monad.Reader
 import Data.Ord
@@ -443,5 +442,5 @@ enforceSingleInstanceRestriction = (`runReader` M.empty) . cata go
           local (M.insert inst qpn) r
         (Nothing, Just qpn') -> do
           -- Not linked, already used. This is an error
-          let cs = M.fromSet (const ConflictAll) (S.fromList [P qpn, P qpn'])
+          let cs = M.fromList [(var, ConflictAll) | var <- [P qpn, P qpn']]
           return $ Fail cs MultipleInstances

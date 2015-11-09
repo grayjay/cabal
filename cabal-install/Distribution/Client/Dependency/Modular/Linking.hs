@@ -512,7 +512,7 @@ lgMerge blame lg lg' = do
                           )
 
 varsToConflictSet :: Set (Var QPN) -> ConflictSet QPN
-varsToConflictSet = M.fromSet (const ConflictAll)
+varsToConflictSet = S.foldr (\var -> M.insert var ConflictAll) M.empty
 
 lgConflictSet :: LinkGroup -> Set (Var QPN)
 lgConflictSet lg = S.fromList (map aux (S.toList (lgMembers lg)) ++ lgBlame lg)
