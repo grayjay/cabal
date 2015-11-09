@@ -18,8 +18,8 @@ import Distribution.Client.Dependency.Modular.Dependency
 import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Index
 import Distribution.Client.Dependency.Modular.Package
-import Distribution.Client.Dependency.Modular.PSQ as P
 import Distribution.Client.Dependency.Modular.Tree
+import Distribution.Client.Dependency.Modular.WeightedPSQ as W
 
 import Distribution.Client.ComponentDeps (Component)
 
@@ -83,12 +83,12 @@ data ValidateState = VS {
 
 type Validate = Reader ValidateState
 
-validate :: Tree QGoalReasonChain -> Validate (Tree QGoalReasonChain)
+validate :: Tree a QGoalReasonChain -> Validate (Tree a QGoalReasonChain)
 validate = cata go
   where
-    go :: TreeF QGoalReasonChain (Validate (Tree QGoalReasonChain)) -> Validate (Tree QGoalReasonChain)
+    go :: TreeF a QGoalReasonChain (Validate (Tree a QGoalReasonChain)) -> Validate (Tree a QGoalReasonChain)
 
-    go (PChoiceF qpn gr     ts) = PChoice qpn gr <$> sequence (P.mapWithKey (goP qpn gr) ts)
+    go (PChoiceF qpn gr     ts) = PChoice qpn gr <$> sequence (W.mapWithKey (goP qpn gr) ts)
     go (FChoiceF qfn gr b m ts) =
       do
         -- Flag choices may occur repeatedly (because they can introduce new constraints
@@ -97,30 +97,30 @@ validate = cata go
         PA _ pfa _ <- asks pa -- obtain current flag-preassignment
         case M.lookup qfn pfa of
           Just rb -> -- flag has already been assigned; collapse choice to the correct branch
-                     case P.lookup rb ts of
+                     case W.lookup rb ts of
                        Just t  -> goF qfn gr rb t
                        Nothing -> return $ Fail (toConflictSet (Goal (F qfn) gr)) (MalformedFlagChoice qfn)
           Nothing -> -- flag choice is new, follow both branches
-                     FChoice qfn gr b m <$> sequence (P.mapWithKey (goF qfn gr) ts)
+                     FChoice qfn gr b m <$> sequence (W.mapWithKey (goF qfn gr) ts)
     go (SChoiceF qsn gr b   ts) =
       do
         -- Optional stanza choices are very similar to flag choices.
         PA _ _ psa <- asks pa -- obtain current stanza-preassignment
         case M.lookup qsn psa of
           Just rb -> -- stanza choice has already been made; collapse choice to the correct branch
-                     case P.lookup rb ts of
+                     case W.lookup rb ts of
                        Just t  -> goS qsn gr rb t
                        Nothing -> return $ Fail (toConflictSet (Goal (S qsn) gr)) (MalformedStanzaChoice qsn)
           Nothing -> -- stanza choice is new, follow both branches
-                     SChoice qsn gr b <$> sequence (P.mapWithKey (goS qsn gr) ts)
+                     SChoice qsn gr b <$> sequence (W.mapWithKey (goS qsn gr) ts)
 
     -- We don't need to do anything for goal choices or failure nodes.
     go (GoalChoiceF              ts) = GoalChoice <$> sequence ts
-    go (DoneF    rdm               ) = pure (Done rdm)
+    go (DoneF    rdm s             ) = pure (Done rdm s)
     go (FailF    c fr              ) = pure (Fail c fr)
 
     -- What to do for package nodes ...
-    goP :: QPN -> QGoalReasonChain -> POption -> Validate (Tree QGoalReasonChain) -> Validate (Tree QGoalReasonChain)
+    goP :: QPN -> QGoalReasonChain -> POption -> Validate (Tree a QGoalReasonChain) -> Validate (Tree a QGoalReasonChain)
     goP qpn@(Q _pp pn) gr (POption i _) r = do
       PA ppa pfa psa <- asks pa    -- obtain current preassignment
       idx            <- asks index -- obtain the index
@@ -148,7 +148,7 @@ validate = cata go
                                     local (\ s -> s { pa = PA nppa pfa psa, saved = nsvd }) r
 
     -- What to do for flag nodes ...
-    goF :: QFN -> QGoalReasonChain -> Bool -> Validate (Tree QGoalReasonChain) -> Validate (Tree QGoalReasonChain)
+    goF :: QFN -> QGoalReasonChain -> Bool -> Validate (Tree a QGoalReasonChain) -> Validate (Tree a QGoalReasonChain)
     goF qfn@(FN (PI qpn _i) _f) gr b r = do
       PA ppa pfa psa <- asks pa -- obtain current preassignment
       svd <- asks saved         -- obtain saved dependencies
@@ -170,7 +170,7 @@ validate = cata go
         Right nppa  -> local (\ s -> s { pa = PA nppa npfa psa }) r
 
     -- What to do for stanza nodes (similar to flag nodes) ...
-    goS :: QSN -> QGoalReasonChain -> Bool -> Validate (Tree QGoalReasonChain) -> Validate (Tree QGoalReasonChain)
+    goS :: QSN -> QGoalReasonChain -> Bool -> Validate (Tree a QGoalReasonChain) -> Validate (Tree a QGoalReasonChain)
     goS qsn@(SN (PI qpn _i) _f) gr b r = do
       PA ppa pfa psa <- asks pa -- obtain current preassignment
       svd <- asks saved         -- obtain saved dependencies
@@ -235,7 +235,7 @@ extractNewDeps v gr b fa sa = go
                                   Just False -> []
 
 -- | Interface.
-validateTree :: Index -> Tree QGoalReasonChain -> Tree QGoalReasonChain
+validateTree :: Index -> Tree a QGoalReasonChain -> Tree a QGoalReasonChain
 validateTree idx t = runReader (validate t) VS {
     index = idx
   , saved = M.empty

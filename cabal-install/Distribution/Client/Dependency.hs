@@ -52,6 +52,7 @@ module Distribution.Client.Dependency (
     setShadowPkgs,
     setStrongFlags,
     setMaxBackjumps,
+    setMaxScore,
     addSourcePackages,
     hideInstalledPackagesSpecificByComponentId,
     hideInstalledPackagesSpecificBySourcePackageId,
@@ -62,7 +63,7 @@ module Distribution.Client.Dependency (
 import Distribution.Client.Dependency.TopDown
          ( topDownResolver )
 import Distribution.Client.Dependency.Modular
-         ( modularResolver, SolverConfig(..) )
+         ( modularResolver, SolverConfig(SolverConfig) )
 import qualified Distribution.Client.PackageIndex as PackageIndex
 import Distribution.Simple.PackageIndex (InstalledPackageIndex)
 import qualified Distribution.Simple.PackageIndex as InstalledPackageIndex
@@ -76,6 +77,7 @@ import Distribution.Client.Dependency.Types
          , PackageConstraint(..), showPackageConstraint
          , LabeledPackageConstraint(..), unlabelPackageConstraint
          , ConstraintSource(..), showConstraintSource
+         , InstallPlanScore, defaultInstallPlanScore
          , AllowNewer(..), PackagePreferences(..), InstalledPreference(..)
          , PackagesPreferenceDefault(..)
          , Progress(..), foldProgress )
@@ -146,7 +148,8 @@ data DepResolverParams = DepResolverParams {
        depResolverAvoidReinstalls   :: Bool,
        depResolverShadowPkgs        :: Bool,
        depResolverStrongFlags       :: Bool,
-       depResolverMaxBackjumps      :: Maybe Int
+       depResolverMaxBackjumps      :: Maybe Int,
+       depResolverMaxScore          :: Maybe InstallPlanScore
      }
 
 showDepResolverParams :: DepResolverParams -> String
@@ -203,7 +206,8 @@ basicDepResolverParams installedPkgIndex sourcePkgIndex =
        depResolverAvoidReinstalls   = False,
        depResolverShadowPkgs        = False,
        depResolverStrongFlags       = False,
-       depResolverMaxBackjumps      = Nothing
+       depResolverMaxBackjumps      = Nothing,
+       depResolverMaxScore          = Nothing
      }
 
 addTargets :: [PackageName]
@@ -270,6 +274,12 @@ setMaxBackjumps :: Maybe Int -> DepResolverParams -> DepResolverParams
 setMaxBackjumps n params =
     params {
       depResolverMaxBackjumps = n
+    }
+
+setMaxScore :: Maybe InstallPlanScore -> DepResolverParams -> DepResolverParams
+setMaxScore n params =
+    params {
+      depResolverMaxScore = n
     }
 
 -- | Some packages are specific to a given compiler version and should never be
@@ -540,16 +550,17 @@ resolveDependencies :: Platform
     --TODO: is this needed here? see dontUpgradeNonUpgradeablePackages
 resolveDependencies platform comp _solver params
   | null (depResolverTargets params)
-  = return (validateSolverResult platform comp indGoals [])
+  = return
+    (validateSolverResult platform comp indGoals [] defaultInstallPlanScore)
   where
     indGoals = depResolverIndependentGoals params
 
 resolveDependencies platform comp  solver params =
 
     Step (showDepResolverParams finalparams)
-  $ fmap (validateSolverResult platform comp indGoals)
+  $ fmap (uncurry $ validateSolverResult platform comp indGoals)
   $ runSolver solver (SolverConfig reorderGoals indGoals noReinstalls
-                      shadowing strFlags maxBkjumps)
+                      shadowing strFlags maxBkjumps maxScore)
                      platform comp installedPkgIndex sourcePkgIndex
                      preferences constraints targets
   where
@@ -564,7 +575,8 @@ resolveDependencies platform comp  solver params =
       noReinstalls
       shadowing
       strFlags
-      maxBkjumps)     = dontUpgradeNonUpgradeablePackages
+      maxBkjumps
+      maxScore)       = dontUpgradeNonUpgradeablePackages
                       -- TODO:
                       -- The modular solver can properly deal with broken
                       -- packages and won't select them. So the
@@ -620,10 +632,11 @@ validateSolverResult :: Platform
                      -> CompilerInfo
                      -> Bool
                      -> [ResolverPackage]
+                     -> InstallPlanScore
                      -> InstallPlan
-validateSolverResult platform comp indepGoals pkgs =
+validateSolverResult platform comp indepGoals pkgs score =
     case planPackagesProblems platform comp pkgs of
-      [] -> case InstallPlan.new indepGoals index of
+      [] -> case InstallPlan.new indepGoals score index of
               Right plan     -> plan
               Left  problems -> error (formatPlanProblems problems)
       problems               -> error (formatPkgProblems problems)
@@ -791,7 +804,7 @@ resolveWithoutDependencies :: DepResolverParams
 resolveWithoutDependencies (DepResolverParams targets constraints
                               prefs defpref installedPkgIndex sourcePkgIndex
                               _reorderGoals _indGoals _avoidReinstalls
-                              _shadowing _strFlags _maxBjumps) =
+                              _shadowing _strFlags _maxBjumps _maxScore) =
     collectEithers (map selectPackage targets)
   where
     selectPackage :: PackageName -> Either ResolveNoDepsError SourcePackage
