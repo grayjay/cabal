@@ -1726,7 +1726,7 @@ elabBuildTargetWholeComponents elab =
 pruneInstallPlanToTargets :: Map UnitId [PackageTarget]
                           -> ElaboratedInstallPlan -> ElaboratedInstallPlan
 pruneInstallPlanToTargets perPkgTargetsMap elaboratedPlan =
-    InstallPlan.new (InstallPlan.planIndepGoals elaboratedPlan)
+    InstallPlan.new (InstallPlan.planIndepGoals elaboratedPlan) (InstallPlan.planScore elaboratedPlan)
   . Graph.fromList
     -- We have to do this in two passes
   . pruneInstallPlanPass2
@@ -2018,7 +2018,7 @@ pruneInstallPlanToDependencies pkgTargets installPlan =
     assert (all (isJust . InstallPlan.lookup installPlan)
                 (Set.toList pkgTargets)) $
 
-    fmap (InstallPlan.new (InstallPlan.planIndepGoals installPlan))
+    fmap (InstallPlan.new (InstallPlan.planIndepGoals installPlan) (InstallPlan.planScore installPlan))
   . checkBrokenDeps
   . Graph.fromList
   . filter (\pkg -> installedUnitId pkg `Set.notMember` pkgTargets)
