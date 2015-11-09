@@ -40,6 +40,7 @@ import Distribution.Solver.Types.OptionalStanza
 import Distribution.Solver.Types.PkgConfigDb ( PkgConfigDb )
 import Distribution.Solver.Types.PackageIndex ( PackageIndex )
 import Distribution.Solver.Types.Progress
+import Distribution.Solver.Types.Settings
 import Distribution.Solver.Types.SourcePackage
 import Distribution.Solver.Types.SolverPackage
 
@@ -108,7 +109,8 @@ type DependencyResolver loc = Platform
                            -> (PackageName -> PackagePreferences)
                            -> [LabeledPackageConstraint]
                            -> [PackageName]
-                           -> Progress String String [ResolverPackage loc]
+                           -> Progress String String
+                                       ([ResolverPackage loc], InstallPlanScore)
 
 -- | The dependency resolver picks either pre-existing installed packages
 -- or it picks source packages along with package configuration.

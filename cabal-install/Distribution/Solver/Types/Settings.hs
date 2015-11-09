@@ -7,6 +7,9 @@ module Distribution.Solver.Types.Settings
     , ShadowPkgs(..)
     , StrongFlags(..)
     , EnableBackjumping(..)
+    , InstallPlanScore(..)
+    , showInstallPlanScore
+    , defaultInstallPlanScore
     ) where
 
 import Distribution.Simple.Setup ( BooleanFlag(..) )
@@ -36,3 +39,16 @@ instance Binary IndependentGoals
 instance Binary AvoidReinstalls
 instance Binary ShadowPkgs
 instance Binary StrongFlags
+
+newtype InstallPlanScore = InstallPlanScore { unInstallPlanScore :: Double }
+  deriving (Eq, Ord, Num, Fractional, Generic, Show)
+
+instance Binary InstallPlanScore
+
+showInstallPlanScore :: InstallPlanScore -> String
+showInstallPlanScore (InstallPlanScore x) = show x
+
+-- | Placeholder used when no score is calculated, e.g., the score assigned by
+-- the Topdown solver.
+defaultInstallPlanScore :: InstallPlanScore
+defaultInstallPlanScore = 0

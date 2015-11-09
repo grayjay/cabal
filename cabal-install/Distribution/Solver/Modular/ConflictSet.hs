@@ -7,23 +7,26 @@
 -- > import qualified Distribution.Solver.Modular.ConflictSet as CS
 module Distribution.Solver.Modular.ConflictSet (
     ConflictSet -- opaque
+  , ConflictType(..)
   , showCS
     -- Set-like operations
   , toList
   , union
   , unions
   , insert
+  , insertWithConflictType
   , empty
   , singleton
   , member
+  , lookup
   , filter
   , fromList
   ) where
 
-import Prelude hiding (filter)
+import Prelude hiding (filter, lookup)
 import Data.List (intercalate)
-import Data.Set (Set)
-import qualified Data.Set as S
+import Data.Map (Map)
+import qualified Data.Map as M
 
 import Distribution.Solver.Modular.Package
 import Distribution.Solver.Modular.Var
@@ -32,43 +35,71 @@ import Distribution.Solver.Modular.Var
 --
 -- Since these variables should be preprocessed in some way, this type is
 -- kept abstract.
-newtype ConflictSet qpn = CS { fromConflictSet :: Set (Var qpn) }
+newtype ConflictSet qpn = CS { fromConflictSet :: Map (Var qpn) ConflictType }
   deriving (Eq, Ord, Show)
 
+-- TODO: The name of this type and its constructors could be improved.
+data ConflictType =
+
+  -- | Any other value in the variable's domain might resolve the conflict.
+  ConflictAll
+
+  -- | Only values that are less than the current assignment can resolve the
+  -- conflict.
+  | ConflictLessThan
+  deriving (Eq, Ord, Show)
+
+combineConflictType :: ConflictType -> ConflictType -> ConflictType
+combineConflictType ConflictLessThan ConflictLessThan = ConflictLessThan
+combineConflictType _ _ = ConflictAll
+
 showCS :: ConflictSet QPN -> String
-showCS = intercalate ", " . map showVar . toList
+showCS =
+    intercalate ", " . map (uncurry showConflict) . M.toList . fromConflictSet
+  where
+    -- TODO: How should we display the type of conflict?
+    showConflict v t = "(" ++ showVar v ++ ", " ++ show t ++ ")"
 
 {-------------------------------------------------------------------------------
   Set-like operations
 -------------------------------------------------------------------------------}
 
 toList :: ConflictSet qpn -> [Var qpn]
-toList = S.toList . fromConflictSet
+toList = map fst . M.toList . fromConflictSet
 
 union :: Ord qpn => ConflictSet qpn -> ConflictSet qpn -> ConflictSet qpn
-union (CS a) (CS b) = CS (a `S.union` b)
+union (CS a) (CS b) = CS (M.unionWith combineConflictType a b)
 
 unions :: Ord qpn => [ConflictSet qpn] -> ConflictSet qpn
-unions = CS . S.unions . map fromConflictSet
+unions = CS . M.unionsWith combineConflictType . map fromConflictSet
 
 insert :: Ord qpn => Var qpn -> ConflictSet qpn -> ConflictSet qpn
-insert var (CS set) = CS (S.insert (simplifyVar var) set)
+insert v = insertWithConflictType v ConflictAll
+
+insertWithConflictType :: Ord qpn => Var qpn -> ConflictType
+                       -> ConflictSet qpn -> ConflictSet qpn
+insertWithConflictType var ct (CS set) =
+    CS (M.insertWith combineConflictType (simplifyVar var) ct set)
 
 empty :: ConflictSet qpn
-empty = CS S.empty
+empty = CS M.empty
 
 singleton :: Var qpn -> ConflictSet qpn
-singleton = CS . S.singleton . simplifyVar
+singleton v = CS $ M.singleton (simplifyVar v) ConflictAll
 
 member :: Ord qpn => Var qpn -> ConflictSet qpn -> Bool
-member var (CS set) = S.member (simplifyVar var) set
+member var (CS set) = M.member (simplifyVar var) set
+
+lookup :: Ord qpn => Var qpn -> ConflictSet qpn -> Maybe ConflictType
+lookup var (CS set) = M.lookup (simplifyVar var) set
 
 #if MIN_VERSION_containers(0,5,0)
 filter :: (Var qpn -> Bool) -> ConflictSet qpn -> ConflictSet qpn
 #else
 filter :: Ord qpn => (Var qpn -> Bool) -> ConflictSet qpn -> ConflictSet qpn
 #endif
-filter p (CS set) = CS $ S.filter p set
+filter p (CS set) = CS $ M.filterWithKey (\v _ -> p v) set
 
 fromList :: Ord qpn => [Var qpn] -> ConflictSet qpn
-fromList = CS . S.fromList . map simplifyVar
+fromList = CS . M.fromListWith combineConflictType
+         . map (\v -> (simplifyVar v, ConflictAll))

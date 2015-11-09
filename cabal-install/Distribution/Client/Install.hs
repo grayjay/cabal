@@ -115,6 +115,7 @@ import qualified Distribution.Solver.Types.PackageIndex as SourcePackageIndex
 import           Distribution.Solver.Types.PackageFixedDeps
 import           Distribution.Solver.Types.PkgConfigDb
                    ( PkgConfigDb, readPkgConfigDb )
+import           Distribution.Solver.Types.Settings
 import           Distribution.Solver.Types.SourcePackage as SourcePackage
 
 import Distribution.Utils.NubList
@@ -366,6 +367,8 @@ planPackages comp platform mSandboxPkgInfo solver
         setMaxBackjumps (if maxBackjumps < 0 then Nothing
                                              else Just maxBackjumps)
 
+      . setMaxScore maxScore
+
       . setIndependentGoals independentGoals
 
       . setReorderGoals reorderGoals
@@ -427,6 +430,7 @@ planPackages comp platform mSandboxPkgInfo solver
     shadowPkgs       = fromFlag (installShadowPkgs        installFlags)
     strongFlags      = fromFlag (installStrongFlags       installFlags)
     maxBackjumps     = fromFlag (installMaxBackjumps      installFlags)
+    maxScore         = flagToMaybe (installMaxScore       installFlags)
     upgradeDeps      = fromFlag (installUpgradeDeps       installFlags)
     onlyDeps         = fromFlag (installOnlyDeps          installFlags)
     allowNewer       = fromMaybe AllowNewerNone (configAllowNewer configFlags)
@@ -518,7 +522,7 @@ checkPrintPlan verbosity installed installPlan sourcePkgDb
   -- with a dangerous install plan.
   when (dryRun || containsReinstalls && not overrideReinstall) $
     printPlan (dryRun || breaksPkgs && not overrideReinstall)
-      adaptedVerbosity lPlan sourcePkgDb
+      adaptedVerbosity lPlan (InstallPlan.planScore installPlan) sourcePkgDb
 
   -- If the install plan is dangerous, we print various warning messages. In
   -- particular, if we can see that packages are likely to be broken, we even
@@ -642,9 +646,12 @@ packageStatus installedPkgIndex cpkg =
 printPlan :: Bool -- is dry run
           -> Verbosity
           -> [(ReadyPackage, PackageStatus)]
+          -> InstallPlanScore
           -> SourcePackageDb
           -> IO ()
-printPlan dryRun verbosity plan sourcePkgDb = case plan of
+printPlan dryRun verbosity plan score sourcePkgDb = do
+ notice verbosity $ "Install plan score: " ++ showInstallPlanScore score
+ case plan of
   []   -> return ()
   pkgs
     | verbosity >= Verbosity.verbose -> putStr $ unlines $

@@ -1414,14 +1414,14 @@ pkgBuildTargetWholeComponents pkg =
 --
 pruneInstallPlanToTargets :: Map InstalledPackageId [PackageTarget]
                           -> ElaboratedInstallPlan -> ElaboratedInstallPlan
-pruneInstallPlanToTargets perPkgTargetsMap =
+pruneInstallPlanToTargets perPkgTargetsMap plan =
     either (\_ -> assert False undefined) id
-  . InstallPlan.new (IndependentGoals False)
+  . InstallPlan.new (IndependentGoals False) (InstallPlan.planScore plan)
   . PackageIndex.fromList
     -- We have to do this in two passes
   . pruneInstallPlanPass2
   . pruneInstallPlanPass1 perPkgTargetsMap
-  . InstallPlan.toList
+  $ InstallPlan.toList plan
 
 -- | The first pass does three things:
 --

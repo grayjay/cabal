@@ -58,6 +58,7 @@ import qualified Distribution.Solver.Types.ComponentDeps as CD
 import qualified Distribution.Solver.Types.PackageIndex as PackageIndex
 import           Distribution.Solver.Types.PackageIndex ( PackageIndex )
 import           Distribution.Solver.Types.Progress
+import           Distribution.Solver.Types.Settings
 import           Distribution.Solver.Types.SolverId
 import           Distribution.Solver.Types.SolverPackage
 import           Distribution.Solver.Types.SourcePackage
@@ -274,10 +275,10 @@ topDownResolver' :: Platform -> CompilerInfo
                  -> (PackageName -> PackagePreferences)
                  -> [PackageConstraint]
                  -> [PackageName]
-                 -> Progress Log Failure [ResolverPackage UnresolvedPkgLoc]
+                 -> Progress Log Failure ([ResolverPackage UnresolvedPkgLoc], InstallPlanScore)
 topDownResolver' platform cinfo installedPkgIndex sourcePkgIndex
                  preferences constraints targets =
-      fmap (uncurry finalise)
+      fmap (\(s, cs) -> (finalise s cs, defaultInstallPlanScore))
     . (\cs -> search configure preferences cs initialPkgNames)
   =<< pruneBottomUp platform cinfo
   =<< addTopLevelConstraints constraints

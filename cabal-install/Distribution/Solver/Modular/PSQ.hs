@@ -13,7 +13,6 @@ module Distribution.Solver.Modular.PSQ
     , filterKeys
     , firstOnly
     , fromList
-    , isZeroOrOne
     , keys
     , map
     , mapKeys
@@ -196,11 +195,6 @@ degree (PSQ _)      = Other
 
 null :: PSQ k a -> Bool
 null (PSQ xs) = S.null xs
-
-isZeroOrOne :: PSQ k a -> Bool
-isZeroOrOne (PSQ [])  = True
-isZeroOrOne (PSQ [_]) = True
-isZeroOrOne _         = False
 
 firstOnly :: PSQ k a -> PSQ k a
 firstOnly (PSQ [])      = PSQ []

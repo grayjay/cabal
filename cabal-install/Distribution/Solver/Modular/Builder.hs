@@ -27,6 +27,7 @@ import Distribution.Solver.Modular.Package
 import Distribution.Solver.Modular.PSQ (PSQ)
 import qualified Distribution.Solver.Modular.PSQ as P
 import Distribution.Solver.Modular.Tree
+import qualified Distribution.Solver.Modular.WeightedPSQ as W
 
 import Distribution.Solver.Types.ComponentDeps (Component)
 import Distribution.Solver.Types.Settings
@@ -101,16 +102,16 @@ data BuildType =
   | Instance QPN I PInfo QGoalReason  -- ^ build a tree for a concrete instance
   deriving Show
 
-build :: BuildState -> Tree QGoalReason
+build :: BuildState -> Tree () QGoalReason
 build = ana go
   where
-    go :: BuildState -> TreeF QGoalReason BuildState
+    go :: BuildState -> TreeF () QGoalReason BuildState
 
     -- If we have a choice between many goals, we just record the choice in
     -- the tree. We select each open goal in turn, and before we descend, remove
     -- it from the queue of open goals.
     go bs@(BS { rdeps = rds, open = gs, next = Goals })
-      | P.null gs = DoneF rds
+      | P.null gs = DoneF rds ()
       | otherwise = GoalChoiceF (P.mapWithKey (\ g (_sc, gs') -> bs { next = OneGoal g, open = gs' })
                                               (P.splits gs))
 
@@ -132,9 +133,9 @@ build = ana go
       -- We will probably want to give this case special treatment when generating error
       -- messages though.
       case M.lookup pn idx of
-        Nothing  -> PChoiceF qpn gr (P.fromList [])
-        Just pis -> PChoiceF qpn gr (P.fromList (L.map (\ (i, info) ->
-                                                           (POption i Nothing, bs { next = Instance qpn i info gr }))
+        Nothing  -> PChoiceF qpn gr (W.fromList [])
+        Just pis -> PChoiceF qpn gr (W.fromList (L.map (\ (i, info) ->
+                                                           ([], POption i Nothing, bs { next = Instance qpn i info gr }))
                                                          (M.toList pis)))
           -- TODO: data structure conversion is rather ugly here
 
@@ -143,12 +144,10 @@ build = ana go
     --
     -- TODO: Should we include the flag default in the tree?
     go bs@(BS { next = OneGoal (OpenGoal (Flagged qfn@(FN (PI qpn _) _) (FInfo b m w) t f) gr) }) =
-      FChoiceF qfn gr (w || trivial) m (P.fromList (reorder b
-        [(True,  (extendOpen qpn (L.map (flip OpenGoal (FDependency qfn True )) t) bs) { next = Goals }),
-         (False, (extendOpen qpn (L.map (flip OpenGoal (FDependency qfn False)) f) bs) { next = Goals })]))
+      FChoiceF qfn gr (w || trivial) m (W.fromList
+        [([if b then 0 else 1], True,  (extendOpen qpn (L.map (flip OpenGoal (FDependency qfn True )) t) bs) { next = Goals }),
+         ([if b then 1 else 0], False, (extendOpen qpn (L.map (flip OpenGoal (FDependency qfn False)) f) bs) { next = Goals })])
       where
-        reorder True  = id
-        reorder False = reverse
         trivial = L.null t && L.null f
 
     -- For a stanza, we also create only two subtrees. The order is initially
@@ -157,9 +156,9 @@ build = ana go
     -- (try enabling the stanza if possible by moving the True branch first).
 
     go bs@(BS { next = OneGoal (OpenGoal (Stanza qsn@(SN (PI qpn _) _) t) gr) }) =
-      SChoiceF qsn gr trivial (P.fromList
-        [(False,                                                             bs  { next = Goals }),
-         (True,  (extendOpen qpn (L.map (flip OpenGoal (SDependency qsn)) t) bs) { next = Goals })])
+      SChoiceF qsn gr trivial (W.fromList
+        [([0], False,                                                             bs  { next = Goals }),
+         ([1], True,  (extendOpen qpn (L.map (flip OpenGoal (SDependency qsn)) t) bs) { next = Goals })])
       where
         trivial = L.null t
 
@@ -173,7 +172,7 @@ build = ana go
 
 -- | Interface to the tree builder. Just takes an index and a list of package names,
 -- and computes the initial state and then the tree from there.
-buildTree :: Index -> IndependentGoals -> [PN] -> Tree QGoalReason
+buildTree :: Index -> IndependentGoals -> [PN] -> Tree () QGoalReason
 buildTree idx (IndependentGoals ind) igs =
     build BS {
         index = idx
