@@ -37,6 +37,7 @@ import Distribution.Solver.Types.PkgConfigDb ( PkgConfigDb )
 import Distribution.Solver.Types.PackageIndex ( PackageIndex )
 import Distribution.Solver.Types.Progress
 import Distribution.Solver.Types.ResolverPackage
+import Distribution.Solver.Types.Settings
 import Distribution.Solver.Types.SourcePackage
 
 import qualified Distribution.Compat.ReadP as Parse
@@ -102,7 +103,8 @@ type DependencyResolver loc = Platform
                            -> (PackageName -> PackagePreferences)
                            -> [LabeledPackageConstraint]
                            -> [PackageName]
-                           -> Progress String String [ResolverPackage loc]
+                           -> Progress String String
+                                       ([ResolverPackage loc], InstallPlanScore)
 
 -- | Per-package constraints. Package constraints must be respected by the
 -- solver. Multiple constraints for each package can be given, though obviously

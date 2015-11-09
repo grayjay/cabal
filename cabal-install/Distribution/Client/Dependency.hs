@@ -53,6 +53,7 @@ module Distribution.Client.Dependency (
     setStrongFlags,
     setMaxBackjumps,
     setEnableBackjumping,
+    setMaxScore,
     addSourcePackages,
     hideInstalledPackagesSpecificByUnitId,
     hideInstalledPackagesSpecificBySourcePackageId,
@@ -158,7 +159,8 @@ data DepResolverParams = DepResolverParams {
        depResolverShadowPkgs        :: ShadowPkgs,
        depResolverStrongFlags       :: StrongFlags,
        depResolverMaxBackjumps      :: Maybe Int,
-       depResolverEnableBackjumping :: EnableBackjumping
+       depResolverEnableBackjumping :: EnableBackjumping,
+       depResolverMaxScore          :: Maybe InstallPlanScore
      }
 
 showDepResolverParams :: DepResolverParams -> String
@@ -230,7 +232,8 @@ basicDepResolverParams installedPkgIndex sourcePkgIndex =
        depResolverShadowPkgs        = ShadowPkgs False,
        depResolverStrongFlags       = StrongFlags False,
        depResolverMaxBackjumps      = Nothing,
-       depResolverEnableBackjumping = EnableBackjumping True
+       depResolverEnableBackjumping = EnableBackjumping True,
+       depResolverMaxScore          = Nothing
      }
 
 addTargets :: [PackageName]
@@ -303,6 +306,12 @@ setEnableBackjumping :: EnableBackjumping -> DepResolverParams -> DepResolverPar
 setEnableBackjumping b params =
     params {
       depResolverEnableBackjumping = b
+    }
+
+setMaxScore :: Maybe InstallPlanScore -> DepResolverParams -> DepResolverParams
+setMaxScore n params =
+    params {
+      depResolverMaxScore = n
     }
 
 -- | Some packages are specific to a given compiler version and should never be
@@ -578,16 +587,17 @@ resolveDependencies :: Platform
     --TODO: is this needed here? see dontUpgradeNonUpgradeablePackages
 resolveDependencies platform comp _pkgConfigDB _solver params
   | null (depResolverTargets params)
-  = return (validateSolverResult platform comp indGoals [])
+  = return
+    (validateSolverResult platform comp indGoals [] defaultInstallPlanScore)
   where
     indGoals = depResolverIndependentGoals params
 
 resolveDependencies platform comp pkgConfigDB solver params =
 
     Step (showDepResolverParams finalparams)
-  $ fmap (validateSolverResult platform comp indGoals)
+  $ fmap (uncurry $ validateSolverResult platform comp indGoals)
   $ runSolver solver (SolverConfig reorderGoals indGoals noReinstalls
-                      shadowing strFlags maxBkjumps enableBj)
+                      shadowing strFlags maxBkjumps enableBj mScore)
                      platform comp installedPkgIndex sourcePkgIndex
                      pkgConfigDB preferences constraints targets
   where
@@ -603,7 +613,8 @@ resolveDependencies platform comp pkgConfigDB solver params =
       shadowing
       strFlags
       maxBkjumps
-      enableBj) = dontUpgradeNonUpgradeablePackages
+      enableBj
+      mScore) = dontUpgradeNonUpgradeablePackages
                       -- TODO:
                       -- The modular solver can properly deal with broken
                       -- packages and won't select them. So the
@@ -667,10 +678,11 @@ validateSolverResult :: Platform
                      -> CompilerInfo
                      -> IndependentGoals
                      -> [ResolverPackage UnresolvedPkgLoc]
+                     -> InstallPlanScore
                      -> SolverInstallPlan
-validateSolverResult platform comp indepGoals pkgs =
+validateSolverResult platform comp indepGoals pkgs score =
     case planPackagesProblems platform comp pkgs of
-      [] -> case InstallPlan.new indepGoals index of
+      [] -> case InstallPlan.new indepGoals score index of
               Right plan     -> plan
               Left  problems -> error (formatPlanProblems problems)
       problems               -> error (formatPkgProblems problems)
@@ -838,7 +850,7 @@ resolveWithoutDependencies :: DepResolverParams
 resolveWithoutDependencies (DepResolverParams targets constraints
                               prefs defpref installedPkgIndex sourcePkgIndex
                               _reorderGoals _indGoals _avoidReinstalls
-                              _shadowing _strFlags _maxBjumps _enableBj) =
+                              _shadowing _strFlags _maxBjumps _enableBj _maxScore) =
     collectEithers (map selectPackage targets)
   where
     selectPackage :: PackageName -> Either ResolveNoDepsError UnresolvedSourcePackage
