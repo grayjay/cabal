@@ -8,6 +8,7 @@ import Distribution.Solver.Types.PackagePreferences
 import Distribution.Solver.Types.PackageIndex ( PackageIndex )
 import Distribution.Solver.Types.Progress
 import Distribution.Solver.Types.ResolverPackage
+import Distribution.Solver.Types.Settings
 import Distribution.Solver.Types.SourcePackage
 
 import Distribution.Simple.PackageIndex ( InstalledPackageIndex )
@@ -31,4 +32,5 @@ type DependencyResolver loc = Platform
                            -> (PackageName -> PackagePreferences)
                            -> [LabeledPackageConstraint]
                            -> [PackageName]
-                           -> Progress String String [ResolverPackage loc]
+                           -> Progress String String
+                                       ([ResolverPackage loc], InstallPlanScore)

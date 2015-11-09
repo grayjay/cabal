@@ -83,7 +83,8 @@ type SolverPlanIndex = Graph SolverPlanPackage
 
 data SolverInstallPlan = SolverInstallPlan {
     planIndex      :: !SolverPlanIndex,
-    planIndepGoals :: !IndependentGoals
+    planIndepGoals :: !IndependentGoals,
+    planScore      :: !InstallPlanScore
   }
 
 {-
@@ -100,22 +101,25 @@ planPkgOf plan v =
 
 mkInstallPlan :: SolverPlanIndex
               -> IndependentGoals
+              -> InstallPlanScore
               -> SolverInstallPlan
-mkInstallPlan index indepGoals =
+mkInstallPlan index indepGoals score =
     SolverInstallPlan {
       planIndex      = index,
-      planIndepGoals = indepGoals
+      planIndepGoals = indepGoals,
+      planScore      = score
     }
 
 instance Binary SolverInstallPlan where
     put SolverInstallPlan {
               planIndex      = index,
-              planIndepGoals = indepGoals
-        } = put (index, indepGoals)
+              planIndepGoals = indepGoals,
+              planScore      = score
+        } = put (index, indepGoals, score)
 
     get = do
-      (index, indepGoals) <- get
-      return $! mkInstallPlan index indepGoals
+      (index, indepGoals, score) <- get
+      return $! mkInstallPlan index indepGoals score
 
 showPlanIndex :: SolverPlanIndex -> String
 showPlanIndex index =
@@ -133,11 +137,12 @@ showPlanPackage (Configured  spkg)   = "Configured " ++ display (packageId spkg)
 -- | Build an installation plan from a valid set of resolved packages.
 --
 new :: IndependentGoals
+    -> InstallPlanScore
     -> SolverPlanIndex
     -> Either [SolverPlanProblem] SolverInstallPlan
-new indepGoals index =
+new indepGoals score index =
   case problems indepGoals index of
-    []    -> Right (mkInstallPlan index indepGoals)
+    []    -> Right (mkInstallPlan index indepGoals score)
     probs -> Left probs
 
 toList :: SolverInstallPlan -> [SolverPlanPackage]
@@ -154,7 +159,7 @@ remove :: (SolverPlanPackage -> Bool)
        -> Either [SolverPlanProblem]
                  (SolverInstallPlan)
 remove shouldRemove plan =
-    new (planIndepGoals plan) newIndex
+    new (planIndepGoals plan) (planScore plan) newIndex
   where
     newIndex = Graph.fromList $
                  filter (not . shouldRemove) (toList plan)

@@ -13,6 +13,7 @@ module Distribution.Solver.Modular.WeightedPSQ (
   , toList
   , union
   , weights
+  , zipWithIndex
   ) where
 
 -- Association lists that are always sorted by weight.
@@ -70,6 +71,11 @@ mapWeightsWithKey f (WeightedPSQ xs) = fromList $
 mapWithKey :: (k -> v -> v') -> WeightedPSQ w k v -> WeightedPSQ w k v'
 mapWithKey f (WeightedPSQ xs) = WeightedPSQ $
                                 L.map (\ (w, k, v) -> (w, k, f k v)) xs
+
+zipWithIndex :: WeightedPSQ w k v -> WeightedPSQ w k (v, Int)
+zipWithIndex (WeightedPSQ xs) = WeightedPSQ (zipWith f xs [0..])
+  where
+    f (w, k, v) i = (w, k, (v, i))
 
 union :: Ord w => WeightedPSQ w k v -> WeightedPSQ w k v -> WeightedPSQ w k v
 union (WeightedPSQ xs) (WeightedPSQ ys) = fromList (xs ++ ys)
