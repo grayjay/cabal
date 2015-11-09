@@ -8,7 +8,10 @@ module Distribution.Client.Dependency.Modular.Dependency (
   , varPI
     -- * Conflict sets
   , ConflictSet
+  , ConflictType(..)
   , showCS
+  , unionCS
+  , insertCS
     -- * Constrained instances
   , CI(..)
   , showCI
@@ -55,9 +58,8 @@ import Prelude hiding (pi)
 import Data.List (intercalate)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
-import Data.Set (Set)
 import qualified Data.List as L
-import qualified Data.Set  as S
+import qualified Data.Map  as M
 
 import Language.Haskell.Extension (Extension(..), Language(..))
 
@@ -109,10 +111,41 @@ varPI (S (SN (PI qpn i) _)) = (qpn, Just i)
   Conflict sets
 -------------------------------------------------------------------------------}
 
-type ConflictSet qpn = Set (Var qpn)
+type ConflictSet qpn = Map (Var qpn) ConflictType
+
+-- TODO: The name of this type could be improved.
+data ConflictType =
+
+  -- | Any other value in the variable's domain might resolve the conflict.
+  ConflictAll
+
+  -- | Only values that are less than the current assignment can resolve the
+  -- conflict.
+  | ConflictLessThan
+  deriving (Eq, Show)
+
+combineConflictType :: ConflictType -> ConflictType -> ConflictType
+combineConflictType ConflictLessThan ConflictLessThan = ConflictLessThan
+combineConflictType _ _ = ConflictAll
 
 showCS :: ConflictSet QPN -> String
-showCS = intercalate ", " . L.map showVar . S.toList
+showCS = intercalate ", " . L.map (uncurry showConflict) . M.toList
+  where
+    -- TODO: How should we display the type of conflict?
+    showConflict v t = "(" ++ showVar v ++ ", " ++ show t ++ ")"
+
+unionCS :: Ord qpn => ConflictSet qpn -> ConflictSet qpn -> ConflictSet qpn
+unionCS = M.unionWith combineConflictType
+
+unionsCS :: Ord qpn => [ConflictSet qpn] -> ConflictSet qpn
+unionsCS = M.unionsWith combineConflictType
+
+insertCS :: Ord qpn
+         => Var qpn
+         -> ConflictType
+         -> ConflictSet qpn
+         -> ConflictSet qpn
+insertCS = M.insertWith combineConflictType . simplifyVar
 
 {-------------------------------------------------------------------------------
   Constrained instances
@@ -146,13 +179,13 @@ showCI (Constrained vr) = showVR (collapse vr)
 merge :: Ord qpn => CI qpn -> CI qpn -> Either (ConflictSet qpn, (CI qpn, CI qpn)) (CI qpn)
 merge c@(Fixed i g1)       d@(Fixed j g2)
   | i == j                                    = Right c
-  | otherwise                                 = Left (S.union (toConflictSet g1) (toConflictSet g2), (c, d))
+  | otherwise                                 = Left (unionCS (toConflictSet g1) (toConflictSet g2), (c, d))
 merge c@(Fixed (I v _) g1)   (Constrained rs) = go rs -- I tried "reverse rs" here, but it seems to slow things down ...
   where
     go []              = Right c
     go (d@(vr, g2) : vrs)
       | checkVR vr v   = go vrs
-      | otherwise      = Left (S.union (toConflictSet g1) (toConflictSet g2), (c, Constrained [d]))
+      | otherwise      = Left (unionCS (toConflictSet g1) (toConflictSet g2), (c, Constrained [d]))
 merge c@(Constrained _)    d@(Fixed _ _)      = merge d c
 merge   (Constrained rs)     (Constrained ss) = Right (Constrained (rs ++ ss))
 
@@ -400,19 +433,19 @@ instance ResetGoal Goal where
 -- | Compute a conflic set from a goal. The conflict set contains the
 -- closure of goal reasons as well as the variable of the goal itself.
 toConflictSet :: Ord qpn => Goal qpn -> ConflictSet qpn
-toConflictSet (Goal g grs) = S.insert (simplifyVar g) (goalReasonChainToVars grs)
+toConflictSet (Goal g grs) = M.insert (simplifyVar g) ConflictAll (goalReasonChainToVars grs)
 
 goalReasonToVars :: GoalReason qpn -> ConflictSet qpn
-goalReasonToVars UserGoal                 = S.empty
-goalReasonToVars (PDependency (PI qpn _)) = S.singleton (P qpn)
-goalReasonToVars (FDependency qfn _)      = S.singleton (simplifyVar (F qfn))
-goalReasonToVars (SDependency qsn)        = S.singleton (S qsn)
+goalReasonToVars UserGoal                 = M.empty
+goalReasonToVars (PDependency (PI qpn _)) = M.singleton (P qpn) ConflictAll
+goalReasonToVars (FDependency qfn _)      = M.singleton (simplifyVar (F qfn)) ConflictAll
+goalReasonToVars (SDependency qsn)        = M.singleton (S qsn) ConflictAll
 
 goalReasonChainToVars :: Ord qpn => GoalReasonChain qpn -> ConflictSet qpn
-goalReasonChainToVars = S.unions . L.map goalReasonToVars
+goalReasonChainToVars = unionsCS . L.map goalReasonToVars
 
 goalReasonChainsToVars :: Ord qpn => [GoalReasonChain qpn] -> ConflictSet qpn
-goalReasonChainsToVars = S.unions . L.map goalReasonChainToVars
+goalReasonChainsToVars = unionsCS . L.map goalReasonChainToVars
 
 {-------------------------------------------------------------------------------
   Open goals

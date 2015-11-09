@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.Client.Dependency.Types
@@ -17,6 +18,10 @@ module Distribution.Client.Dependency.Types (
     Solver(..),
     DependencyResolver,
     ResolverPackage(..),
+
+    InstallPlanScore(..),
+    showInstallPlanScore,
+    defaultInstallPlanScore,
 
     AllowNewer(..), isAllowNewer,
     PackageConstraint(..),
@@ -112,7 +117,8 @@ type DependencyResolver = Platform
                        -> (PackageName -> PackagePreferences)
                        -> [LabeledPackageConstraint]
                        -> [PackageName]
-                       -> Progress String String [ResolverPackage]
+                       -> Progress String String
+                                   ([ResolverPackage], InstallPlanScore)
 
 -- | The dependency resolver picks either pre-existing installed packages
 -- or it picks source packages along with package configuration.
@@ -121,6 +127,17 @@ type DependencyResolver = Platform
 --
 data ResolverPackage = PreExisting InstalledPackageInfo
                      | Configured  ConfiguredPackage
+
+newtype InstallPlanScore = InstallPlanScore Double
+  deriving (Eq, Ord, Num, Fractional, Show)
+
+showInstallPlanScore :: InstallPlanScore -> String
+showInstallPlanScore (InstallPlanScore x) = show x
+
+-- | Placeholder used when no score is calculated, e.g., the score assigned by
+-- the Topdown solver.
+defaultInstallPlanScore :: InstallPlanScore
+defaultInstallPlanScore = 0
 
 -- | Per-package constraints. Package constraints must be respected by the
 -- solver. Multiple constraints for each package can be given, though obviously

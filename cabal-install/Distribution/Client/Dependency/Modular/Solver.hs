@@ -28,7 +28,8 @@ data SolverConfig = SolverConfig {
   avoidReinstalls       :: Bool,
   shadowPkgs            :: Bool,
   strongFlags           :: Bool,
-  maxBackjumps          :: Maybe Int
+  maxBackjumps          :: Maybe Int,
+  maxScore              :: Maybe InstallPlanScore
 }
 
 solve :: SolverConfig ->                      -- solver parameters
@@ -37,9 +38,10 @@ solve :: SolverConfig ->                      -- solver parameters
          (PN -> PackagePreferences) ->        -- preferences
          Map PN [LabeledPackageConstraint] -> -- global constraints
          [PN] ->                              -- global goals
-         Log Message (Assignment, RevDepMap)
+         Log Message (Assignment, RevDepMap, InstallPlanScore)
 solve sc cinfo idx userPrefs userConstraints userGoals =
   explorePhase     $
+  maxScorePhase    $
   heuristicsPhase  $
   preferencesPhase $
   validationPhase  $
@@ -47,6 +49,7 @@ solve sc cinfo idx userPrefs userConstraints userGoals =
   buildPhase
   where
     explorePhase     = backjumpAndExplore
+    maxScorePhase    = P.pruneWithMaxScore (maxScore sc) -- must come after all preferences
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        P.deferSetupChoices .
                        P.deferWeakFlagChoices .

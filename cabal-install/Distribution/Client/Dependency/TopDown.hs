@@ -26,6 +26,7 @@ import Distribution.Client.Dependency.Types
          ( DependencyResolver, ResolverPackage(..)
          , PackageConstraint(..), unlabelPackageConstraint
          , PackagePreferences(..), InstalledPreference(..)
+         , InstallPlanScore, defaultInstallPlanScore
          , Progress(..), foldProgress )
 
 import qualified Distribution.Client.PackageIndex as PackageIndex
@@ -270,10 +271,10 @@ topDownResolver' :: Platform -> CompilerInfo
                  -> (PackageName -> PackagePreferences)
                  -> [PackageConstraint]
                  -> [PackageName]
-                 -> Progress Log Failure [ResolverPackage]
+                 -> Progress Log Failure ([ResolverPackage], InstallPlanScore)
 topDownResolver' platform cinfo installedPkgIndex sourcePkgIndex
                  preferences constraints targets =
-      fmap (uncurry finalise)
+      fmap (\(s, cs) -> (finalise s cs, defaultInstallPlanScore))
     . (\cs -> search configure preferences cs initialPkgNames)
   =<< pruneBottomUp platform cinfo
   =<< addTopLevelConstraints constraints

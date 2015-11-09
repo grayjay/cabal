@@ -14,7 +14,7 @@
 -----------------------------------------------------------------------------
 module Distribution.Client.InstallPlan (
   InstallPlan,
-  GenericInstallPlan,
+  GenericInstallPlan(planScore),
   PlanPackage,
   GenericPlanPackage(..),
 
@@ -56,6 +56,8 @@ import Distribution.Client.Types
          ( BuildSuccess, BuildFailure
          , PackageFixedDeps(..), ConfiguredPackage
          , GenericReadyPackage(..), fakeComponentId )
+import Distribution.Client.Dependency.Types
+         ( InstallPlanScore )
 import Distribution.Version
          ( Version )
 import Distribution.Client.ComponentDeps (ComponentDeps)
@@ -184,7 +186,8 @@ data GenericInstallPlan ipkg srcpkg iresult ifailure = GenericInstallPlan {
     planPkgOf      :: Graph.Vertex
                       -> GenericPlanPackage ipkg srcpkg iresult ifailure,
     planVertexOf   :: ComponentId -> Graph.Vertex,
-    planIndepGoals :: Bool
+    planIndepGoals :: Bool,
+    planScore      :: InstallPlanScore
   }
 
 -- | 'GenericInstallPlan' specialised to most commonly used types.
@@ -235,10 +238,11 @@ showPlanPackageTag (Failed    _   _) = "Failed"
 new :: (HasComponentId ipkg,   PackageFixedDeps ipkg,
         HasComponentId srcpkg, PackageFixedDeps srcpkg)
     => Bool
+    -> InstallPlanScore
     -> PlanIndex ipkg srcpkg iresult ifailure
     -> Either [PlanProblem ipkg srcpkg iresult ifailure]
               (GenericInstallPlan ipkg srcpkg iresult ifailure)
-new indepGoals index =
+new indepGoals score index =
   -- NB: Need to pre-initialize the fake-map with pre-existing
   -- packages
   let isPreExisting (PreExisting _) = True
@@ -256,7 +260,8 @@ new indepGoals index =
             planGraphRev   = Graph.transposeG graph,
             planPkgOf      = vertexToPkgId,
             planVertexOf   = fromMaybe noSuchPkgId . pkgIdToVertex,
-            planIndepGoals = indepGoals
+            planIndepGoals = indepGoals,
+            planScore      = score
           }
       where (graph, vertexToPkgId, pkgIdToVertex) =
               PlanIndex.dependencyGraph fakeMap index
@@ -280,7 +285,7 @@ remove :: (HasComponentId ipkg,   PackageFixedDeps ipkg,
        -> Either [PlanProblem ipkg srcpkg iresult ifailure]
                  (GenericInstallPlan ipkg srcpkg iresult ifailure)
 remove shouldRemove plan =
-    new (planIndepGoals plan) newIndex
+    new (planIndepGoals plan) (planScore plan) newIndex
   where
     newIndex = PackageIndex.fromList $
                  filter (not . shouldRemove) (toList plan)
