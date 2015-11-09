@@ -238,6 +238,7 @@ instance Semigroup SavedConfig where
         installHaddockIndex          = combine installHaddockIndex,
         installDryRun                = combine installDryRun,
         installMaxBackjumps          = combine installMaxBackjumps,
+        installMaxScore              = combine installMaxScore,
         installReorderGoals          = combine installReorderGoals,
         installIndependentGoals      = combine installIndependentGoals,
         installShadowPkgs            = combine installShadowPkgs,

@@ -4,6 +4,7 @@ module Distribution.Solver.Modular.Tree
     , POption(..)
     , Tree(..)
     , TreeF(..)
+    , Weight
     , ana
     , cata
     , choices
@@ -26,12 +27,17 @@ import Distribution.Solver.Modular.Package
 import Distribution.Solver.Modular.PSQ (PSQ)
 import qualified Distribution.Solver.Modular.PSQ as P
 import Distribution.Solver.Modular.Version
+import Distribution.Solver.Modular.WeightedPSQ (WeightedPSQ)
+import qualified Distribution.Solver.Modular.WeightedPSQ as W
+import Distribution.Solver.Types.Settings
 import Distribution.Solver.Types.ConstraintSource
 
+type Weight = Double
+
 -- | Type of the search tree. Inlining the choice nodes for now.
-data Tree a =
+data Tree a b =
     -- | Choose a version for a package (or choose to link)
-    PChoice QPN a (PSQ POption (Tree a))
+    PChoice QPN b (WeightedPSQ [Weight] POption (Tree a b))
 
     -- | Choose a value for a flag
     --
@@ -46,13 +52,13 @@ data Tree a =
     -- case for flags that should be implied by what's currently installed on
     -- the system, as opposed to flags that are used to explicitly enable or
     -- disable some functionality.
-  | FChoice QFN a Bool Bool (PSQ Bool (Tree a))
+  | FChoice QFN b Bool Bool (WeightedPSQ [Weight] Bool (Tree a b))
 
     -- | Choose whether or not to enable a stanza
     --
     -- The Bool indicates whether it's trivial (see 'FChoice' for a discussion
     -- of triviality).
-  | SChoice QSN a Bool (PSQ Bool (Tree a))
+  | SChoice QSN b Bool (WeightedPSQ [Weight] Bool (Tree a b))
 
     -- | Choose which choice to make next
     --
@@ -65,10 +71,10 @@ data Tree a =
     --   invariant that the 'QGoalReason' cached in the 'PChoice', 'FChoice'
     --   or 'SChoice' directly below a 'GoalChoice' node must equal the reason
     --   recorded on that 'GoalChoice' node.
-  | GoalChoice (PSQ (Goal QPN) (Tree a))
+  | GoalChoice (PSQ (Goal QPN) (Tree a b))
 
     -- | We're done -- we found a solution!
-  | Done RevDepMap
+  | Done RevDepMap a
 
     -- | We failed to find a solution in this path through the tree
   | Fail (ConflictSet QPN) FailReason
@@ -111,86 +117,87 @@ data FailReason = InconsistentInitialConstraints
                 | MultipleInstances
                 | DependenciesNotLinked String
                 | CyclicDependencies
+                | ExceedsMaxScore InstallPlanScore
   deriving (Eq, Show)
 
 -- | Functor for the tree type.
-data TreeF a b =
-    PChoiceF    QPN a           (PSQ POption    b)
-  | FChoiceF    QFN a Bool Bool (PSQ Bool       b)
-  | SChoiceF    QSN a Bool      (PSQ Bool       b)
-  | GoalChoiceF                 (PSQ (Goal QPN) b)
-  | DoneF       RevDepMap
+data TreeF a b c =
+    PChoiceF    QPN b           (WeightedPSQ [Weight] POption c)
+  | FChoiceF    QFN b Bool Bool (WeightedPSQ [Weight] Bool    c)
+  | SChoiceF    QSN b Bool      (WeightedPSQ [Weight] Bool    c)
+  | GoalChoiceF                 (PSQ (Goal QPN) c)
+  | DoneF       RevDepMap a
   | FailF       (ConflictSet QPN) FailReason
   deriving (Functor, Foldable, Traversable)
 
-out :: Tree a -> TreeF a (Tree a)
+out :: Tree a b -> TreeF a b (Tree a b)
 out (PChoice    p i     ts) = PChoiceF    p i     ts
 out (FChoice    p i b m ts) = FChoiceF    p i b m ts
 out (SChoice    p i b   ts) = SChoiceF    p i b   ts
 out (GoalChoice         ts) = GoalChoiceF         ts
-out (Done       x         ) = DoneF       x
+out (Done       x s       ) = DoneF       x s
 out (Fail       c x       ) = FailF       c x
 
-inn :: TreeF a (Tree a) -> Tree a
+inn :: TreeF a b (Tree a b) -> Tree a b
 inn (PChoiceF    p i     ts) = PChoice    p i     ts
 inn (FChoiceF    p i b m ts) = FChoice    p i b m ts
 inn (SChoiceF    p i b   ts) = SChoice    p i b   ts
 inn (GoalChoiceF         ts) = GoalChoice         ts
-inn (DoneF       x         ) = Done       x
+inn (DoneF       x s       ) = Done       x s
 inn (FailF       c x       ) = Fail       c x
 
-innM :: Monad m => TreeF a (m (Tree a)) -> m (Tree a)
+innM :: Monad m => TreeF a b (m (Tree a b)) -> m (Tree a b)
 innM (PChoiceF    p i     ts) = liftM (PChoice    p i    ) (sequence ts)
 innM (FChoiceF    p i b m ts) = liftM (FChoice    p i b m) (sequence ts)
 innM (SChoiceF    p i b   ts) = liftM (SChoice    p i b  ) (sequence ts)
 innM (GoalChoiceF         ts) = liftM (GoalChoice        ) (sequence ts)
-innM (DoneF       x         ) = return $ Done     x
+innM (DoneF       x s       ) = return $ Done     x s
 innM (FailF       c x       ) = return $ Fail     c x
 
 -- | Determines whether a tree is active, i.e., isn't a failure node.
-active :: Tree a -> Bool
+active :: Tree a b -> Bool
 active (Fail _ _) = False
 active _          = True
 
 -- | Determines how many active choices are available in a node. Note that we
 -- count goal choices as having one choice, always.
-choices :: Tree a -> Int
-choices (PChoice    _ _     ts) = P.length (P.filter active ts)
-choices (FChoice    _ _ _ _ ts) = P.length (P.filter active ts)
-choices (SChoice    _ _ _   ts) = P.length (P.filter active ts)
+choices :: Tree a b -> Int
+choices (PChoice    _ _     ts) = W.length (W.filter active ts)
+choices (FChoice    _ _ _ _ ts) = W.length (W.filter active ts)
+choices (SChoice    _ _ _   ts) = W.length (W.filter active ts)
 choices (GoalChoice         _ ) = 1
-choices (Done       _         ) = 1
+choices (Done       _ _       ) = 1
 choices (Fail       _ _       ) = 0
 
 -- | Variant of 'choices' that only approximates the number of choices.
-dchoices :: Tree a -> P.Degree
-dchoices (PChoice    _ _     ts) = P.degree (P.filter active ts)
-dchoices (FChoice    _ _ _ _ ts) = P.degree (P.filter active ts)
-dchoices (SChoice    _ _ _   ts) = P.degree (P.filter active ts)
+dchoices :: Tree a b -> P.Degree
+dchoices (PChoice    _ _     ts) = W.degree (W.filter active ts)
+dchoices (FChoice    _ _ _ _ ts) = W.degree (W.filter active ts)
+dchoices (SChoice    _ _ _   ts) = W.degree (W.filter active ts)
 dchoices (GoalChoice         _ ) = P.ZeroOrOne
-dchoices (Done       _         ) = P.ZeroOrOne
+dchoices (Done       _ _       ) = P.ZeroOrOne
 dchoices (Fail       _ _       ) = P.ZeroOrOne
 
 -- | Variant of 'choices' that only approximates the number of choices.
-zeroOrOneChoices :: Tree a -> Bool
-zeroOrOneChoices (PChoice    _ _     ts) = P.isZeroOrOne (P.filter active ts)
-zeroOrOneChoices (FChoice    _ _ _ _ ts) = P.isZeroOrOne (P.filter active ts)
-zeroOrOneChoices (SChoice    _ _ _   ts) = P.isZeroOrOne (P.filter active ts)
+zeroOrOneChoices :: Tree a b -> Bool
+zeroOrOneChoices (PChoice    _ _     ts) = W.isZeroOrOne (W.filter active ts)
+zeroOrOneChoices (FChoice    _ _ _ _ ts) = W.isZeroOrOne (W.filter active ts)
+zeroOrOneChoices (SChoice    _ _ _   ts) = W.isZeroOrOne (W.filter active ts)
 zeroOrOneChoices (GoalChoice         _ ) = True
-zeroOrOneChoices (Done       _         ) = True
+zeroOrOneChoices (Done       _ _       ) = True
 zeroOrOneChoices (Fail       _ _       ) = True
 
 -- | Catamorphism on trees.
-cata :: (TreeF a b -> b) -> Tree a -> b
+cata :: (TreeF a b c -> c) -> Tree a b -> c
 cata phi x = (phi . fmap (cata phi) . out) x
 
-trav :: (TreeF a (Tree b) -> TreeF b (Tree b)) -> Tree a -> Tree b
+trav :: (TreeF a b (Tree a c) -> TreeF a c (Tree a c)) -> Tree a b -> Tree a c
 trav psi x = cata (inn . psi) x
 
 -- | Paramorphism on trees.
-para :: (TreeF a (b, Tree a) -> b) -> Tree a -> b
+para :: (TreeF a b (c, Tree a b) -> c) -> Tree a b -> c
 para phi = phi . fmap (\ x -> (para phi x, x)) . out
 
 -- | Anamorphism on trees.
-ana :: (b -> TreeF a b) -> b -> Tree a
+ana :: (c -> TreeF a b c) -> c -> Tree a b
 ana psi = inn . fmap (ana psi) . psi

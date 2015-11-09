@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Distribution.Solver.Modular.Linking (
@@ -28,8 +29,8 @@ import Distribution.Solver.Modular.Flag
 import Distribution.Solver.Modular.Index
 import Distribution.Solver.Modular.Package
 import Distribution.Solver.Modular.Tree
-import qualified Distribution.Solver.Modular.PSQ as P
 import qualified Distribution.Solver.Modular.ConflictSet as CS
+import qualified Distribution.Solver.Modular.WeightedPSQ as W
 
 import Distribution.Solver.Types.OptionalStanza
 import Distribution.Solver.Types.ComponentDeps (Component)
@@ -56,33 +57,36 @@ type Linker       = Reader RelatedGoals
 -- package instance. Whenever we make a choice, we extend the map. Whenever we
 -- find a choice, we look into the map in order to find out what link options we
 -- have to add.
-addLinking :: Tree QGoalReason -> Tree QGoalReason
+addLinking :: Tree a QGoalReason -> Tree a QGoalReason
 addLinking = (`runReader` M.empty) .  cata go
   where
-    go :: TreeF QGoalReason (Linker (Tree QGoalReason)) -> Linker (Tree QGoalReason)
+    go :: TreeF a QGoalReason (Linker (Tree a QGoalReason)) -> Linker (Tree a QGoalReason)
 
     -- The only nodes of interest are package nodes
     go (PChoiceF qpn gr cs) = do
       env <- ask
-      cs' <- T.sequence $ P.mapWithKey (goP qpn) cs
-      let newCs = concatMap (linkChoices env qpn) (P.toList cs')
-      return $ PChoice qpn gr (cs' `P.union` P.fromList newCs)
+      cs' <- T.sequence $ W.mapWithKey (goP qpn) cs
+      let newCs = concatMap (linkChoices env qpn) (W.toList cs')
+      return $ PChoice qpn gr (cs' `W.union` W.fromList newCs)
     go _otherwise =
       innM _otherwise
 
     -- Recurse underneath package choices. Here we just need to make sure
     -- that we record the package choice so that it is available below
-    goP :: QPN -> POption -> Linker (Tree QGoalReason) -> Linker (Tree QGoalReason)
+    goP :: QPN -> POption -> Linker (Tree a QGoalReason) -> Linker (Tree a QGoalReason)
     goP (Q pp pn) (POption i Nothing) = local (M.insertWith (++) (pn, i) [pp])
     goP _ _ = alreadyLinked
 
-linkChoices :: RelatedGoals -> QPN -> (POption, Tree QGoalReason) -> [(POption, Tree QGoalReason)]
-linkChoices related (Q _pp pn) (POption i Nothing, subtree) =
+linkChoices :: forall a w . RelatedGoals
+            -> QPN
+            -> (w, POption, Tree a QGoalReason)
+            -> [(w, POption, Tree a QGoalReason)]
+linkChoices related (Q _pp pn) (weight, POption i Nothing, subtree) =
     map aux (M.findWithDefault [] (pn, i) related)
   where
-    aux :: PP -> (POption, Tree QGoalReason)
-    aux pp = (POption i (Just pp), subtree)
-linkChoices _ _ (POption _ (Just _), _) =
+    aux :: PP -> (w, POption, Tree a QGoalReason)
+    aux pp = (weight, POption i (Just pp), subtree)
+linkChoices _ _ (_, POption _ (Just _), _) =
     alreadyLinked
 
 alreadyLinked :: a
@@ -128,25 +132,25 @@ type Validate = Reader ValidateState
 -- * Linked dependencies,
 -- * Equal flag assignments
 -- * Equal stanza assignments
-validateLinking :: Index -> Tree QGoalReason -> Tree QGoalReason
+validateLinking :: Index -> Tree a QGoalReason -> Tree a QGoalReason
 validateLinking index = (`runReader` initVS) . cata go
   where
-    go :: TreeF QGoalReason (Validate (Tree QGoalReason)) -> Validate (Tree QGoalReason)
+    go :: TreeF a QGoalReason (Validate (Tree a QGoalReason)) -> Validate (Tree a QGoalReason)
 
     go (PChoiceF qpn gr cs) =
-      PChoice qpn gr     <$> T.sequence (P.mapWithKey (goP qpn) cs)
+      PChoice qpn gr     <$> T.sequence (W.mapWithKey (goP qpn) cs)
     go (FChoiceF qfn gr t m cs) =
-      FChoice qfn gr t m <$> T.sequence (P.mapWithKey (goF qfn) cs)
+      FChoice qfn gr t m <$> T.sequence (W.mapWithKey (goF qfn) cs)
     go (SChoiceF qsn gr t cs) =
-      SChoice qsn gr t   <$> T.sequence (P.mapWithKey (goS qsn) cs)
+      SChoice qsn gr t   <$> T.sequence (W.mapWithKey (goS qsn) cs)
 
     -- For the other nodes we just recurse
     go (GoalChoiceF         cs)       = GoalChoice          <$> T.sequence cs
-    go (DoneF revDepMap)              = return $ Done revDepMap
+    go (DoneF revDepMap s)            = return $ Done revDepMap s
     go (FailF conflictSet failReason) = return $ Fail conflictSet failReason
 
     -- Package choices
-    goP :: QPN -> POption -> Validate (Tree QGoalReason) -> Validate (Tree QGoalReason)
+    goP :: QPN -> POption -> Validate (Tree a QGoalReason) -> Validate (Tree a QGoalReason)
     goP qpn@(Q _pp pn) opt@(POption i _) r = do
       vs <- ask
       let PInfo deps _ _ = vsIndex vs ! pn ! i
@@ -156,7 +160,7 @@ validateLinking index = (`runReader` initVS) . cata go
         Right vs'       -> local (const vs') r
 
     -- Flag choices
-    goF :: QFN -> Bool -> Validate (Tree QGoalReason) -> Validate (Tree QGoalReason)
+    goF :: QFN -> Bool -> Validate (Tree a QGoalReason) -> Validate (Tree a QGoalReason)
     goF qfn b r = do
       vs <- ask
       case execUpdateState (pickFlag qfn b) vs of
@@ -164,7 +168,7 @@ validateLinking index = (`runReader` initVS) . cata go
         Right vs'       -> local (const vs') r
 
     -- Stanza choices (much the same as flag choices)
-    goS :: QSN -> Bool -> Validate (Tree QGoalReason) -> Validate (Tree QGoalReason)
+    goS :: QSN -> Bool -> Validate (Tree a QGoalReason) -> Validate (Tree a QGoalReason)
     goS qsn b r = do
       vs <- ask
       case execUpdateState (pickStanza qsn b) vs of

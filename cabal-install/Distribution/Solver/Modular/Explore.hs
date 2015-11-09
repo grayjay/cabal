@@ -14,6 +14,7 @@ import Distribution.Solver.Modular.Package
 import qualified Distribution.Solver.Modular.PSQ as P
 import qualified Distribution.Solver.Modular.ConflictSet as CS
 import Distribution.Solver.Modular.Tree
+import qualified Distribution.Solver.Modular.WeightedPSQ as W
 import Distribution.Solver.Types.Settings (EnableBackjumping(..))
 import qualified Distribution.Solver.Types.Progress as P
 
@@ -29,6 +30,13 @@ import qualified Distribution.Solver.Types.Progress as P
 -- because the current level cannot possibly have contributed to this
 -- conflict, so no other choice at the current level would avoid the
 -- conflict.
+--
+-- We can also stop if we find a conflict set where the current
+-- variable is mapped to 'ConflictLessThan'. 'ConflictLessThan' means
+-- that the conflict can only be resolved by choosing a value that is
+-- to the left of the conflicting assignment. We have already traversed
+-- those possible assignments, and we return the union of their
+-- conflict sets.
 --
 -- If any of the children might contain a successful solution, we can
 -- return it immediately. If all children contain conflict sets, we can
@@ -49,10 +57,12 @@ backjump (EnableBackjumping enableBj) var initial xs =
             -> (ConflictSet QPN -> ConflictSetLog a)
             ->  ConflictSet QPN -> ConflictSetLog a
     combine (P.Done x)    _ _               = P.Done x
-    combine (P.Fail cs)   f csAcc
-      | enableBj && not (var `CS.member` cs) = logBackjump cs
-      | otherwise                = f (csAcc `CS.union` cs)
-    combine (P.Step m ms) f cs   = P.Step m (combine ms f cs)
+    combine (P.Fail cs)   f csAcc =
+      case CS.lookup var cs of
+        Nothing               | enableBj   -> logBackjump cs
+        Just ConflictLessThan | enableBj   -> logBackjump (csAcc `CS.union` cs)
+        _                                  -> f           (csAcc `CS.union` cs)
+    combine (P.Step m ms) f cs              = P.Step m (combine ms f cs)
 
     logBackjump :: ConflictSet QPN -> ConflictSetLog a
     logBackjump cs = failWith (Failure cs Backjump) cs
@@ -61,29 +71,29 @@ type ConflictSetLog = P.Progress Message (ConflictSet QPN)
 
 -- | A tree traversal that simultaneously propagates conflict sets up
 -- the tree from the leaves and creates a log.
-exploreLog :: EnableBackjumping -> Tree QGoalReason
-           -> (Assignment -> ConflictSetLog (Assignment, RevDepMap))
+exploreLog :: EnableBackjumping -> Tree a QGoalReason
+           -> (Assignment -> ConflictSetLog (Assignment, RevDepMap, a))
 exploreLog enableBj = cata go
   where
-    go :: TreeF QGoalReason (Assignment -> ConflictSetLog (Assignment, RevDepMap))
-                         -> (Assignment -> ConflictSetLog (Assignment, RevDepMap))
+    go :: TreeF a QGoalReason (Assignment -> ConflictSetLog (Assignment, RevDepMap, a))
+                           -> (Assignment -> ConflictSetLog (Assignment, RevDepMap, a))
     go (FailF c fr)          _           = failWith (Failure c fr) c
-    go (DoneF rdm)           a           = succeedWith Success (a, rdm)
+    go (DoneF rdm s)           a         = succeedWith Success (a, rdm, s)
     go (PChoiceF qpn gr     ts) (A pa fa sa)   =
       backjump enableBj (P qpn) (avoidSet (P qpn) gr) $ -- try children in order,
-      P.mapWithKey                                -- when descending ...
+      W.mapWithKey                                      -- when descending ...
         (\ i@(POption k _) r -> tryWith (TryP qpn i) $ -- log and ...
                     r (A (M.insert qpn k pa) fa sa)) -- record the pkg choice
       ts
     go (FChoiceF qfn gr _ _ ts) (A pa fa sa)   =
       backjump enableBj (F qfn) (avoidSet (F qfn) gr) $ -- try children in order,
-      P.mapWithKey                                -- when descending ...
+      W.mapWithKey                                -- when descending ...
         (\ k r -> tryWith (TryF qfn k) $          -- log and ...
                     r (A pa (M.insert qfn k fa) sa)) -- record the pkg choice
       ts
     go (SChoiceF qsn gr _   ts) (A pa fa sa)   =
       backjump enableBj (S qsn) (avoidSet (S qsn) gr) $ -- try children in order,
-      P.mapWithKey                                -- when descending ...
+      W.mapWithKey                                -- when descending ...
         (\ k r -> tryWith (TryS qsn k) $          -- log and ...
                     r (A pa fa (M.insert qsn k sa))) -- record the pkg choice
       ts
@@ -121,7 +131,7 @@ avoidSet var gr =
 
 -- | Interface.
 backjumpAndExplore :: EnableBackjumping
-                   -> Tree QGoalReason -> Log Message (Assignment, RevDepMap)
+                   -> Tree a QGoalReason -> Log Message (Assignment, RevDepMap, a)
 backjumpAndExplore enableBj t =
     toLog $ exploreLog enableBj t (A M.empty M.empty M.empty)
   where
