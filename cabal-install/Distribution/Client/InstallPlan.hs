@@ -17,7 +17,7 @@
 -----------------------------------------------------------------------------
 module Distribution.Client.InstallPlan (
   InstallPlan,
-  GenericInstallPlan,
+  GenericInstallPlan(planScore),
   PlanPackage,
   GenericPlanPackage(..),
 
@@ -187,7 +187,10 @@ instance (HasUnitId ipkg, HasUnitId srcpkg) =>
 
 data GenericInstallPlan ipkg srcpkg iresult ifailure = GenericInstallPlan {
     planIndex      :: !(PlanIndex ipkg srcpkg iresult ifailure),
-    planIndepGoals :: !IndependentGoals
+    planIndepGoals :: !IndependentGoals,
+
+    -- TODO: This field can be removed if we don't print the install plan score.
+    planScore      :: !InstallPlanScore
   }
 
 -- | 'GenericInstallPlan' specialised to most commonly used types.
@@ -209,11 +212,13 @@ invariant plan =
 --
 mkInstallPlan :: PlanIndex ipkg srcpkg iresult ifailure
               -> IndependentGoals
+              -> InstallPlanScore
               -> GenericInstallPlan ipkg srcpkg iresult ifailure
-mkInstallPlan index indepGoals =
+mkInstallPlan index indepGoals score =
     GenericInstallPlan {
       planIndex      = index,
-      planIndepGoals = indepGoals
+      planIndepGoals = indepGoals,
+      planScore      = score
     }
 
 internalError :: String -> a
@@ -225,12 +230,13 @@ instance (HasUnitId ipkg,   PackageFixedDeps ipkg,
        => Binary (GenericInstallPlan ipkg srcpkg iresult ifailure) where
     put GenericInstallPlan {
               planIndex      = index,
-              planIndepGoals = indepGoals
-        } = put (index, indepGoals)
+              planIndepGoals = indepGoals,
+              planScore      = score
+        } = put (index, indepGoals, score)
 
     get = do
-      (index, indepGoals) <- get
-      return $! mkInstallPlan index indepGoals
+      (index, indepGoals, score) <- get
+      return $! mkInstallPlan index indepGoals score
 
 showPlanIndex :: (HasUnitId ipkg, HasUnitId srcpkg)
               => PlanIndex ipkg srcpkg iresult ifailure -> String
@@ -257,12 +263,13 @@ showPlanPackageTag (Failed    _   _) = "Failed"
 new :: (HasUnitId ipkg,   PackageFixedDeps ipkg,
         HasUnitId srcpkg, PackageFixedDeps srcpkg)
     => IndependentGoals
+    -> InstallPlanScore
     -> PlanIndex ipkg srcpkg iresult ifailure
     -> Either [PlanProblem ipkg srcpkg iresult ifailure]
               (GenericInstallPlan ipkg srcpkg iresult ifailure)
-new indepGoals index =
+new indepGoals score index =
   case problems indepGoals index of
-    []    -> Right (mkInstallPlan index indepGoals)
+    []    -> Right (mkInstallPlan index indepGoals score)
     probs -> Left probs
 
 toList :: GenericInstallPlan ipkg srcpkg iresult ifailure
@@ -282,7 +289,7 @@ remove :: (HasUnitId ipkg,   PackageFixedDeps ipkg,
        -> Either [PlanProblem ipkg srcpkg iresult ifailure]
                  (GenericInstallPlan ipkg srcpkg iresult ifailure)
 remove shouldRemove plan =
-    new (planIndepGoals plan) newIndex
+    new (planIndepGoals plan) (planScore plan) newIndex
   where
     newIndex = Graph.fromList $
                  filter (not . shouldRemove) (toList plan)
@@ -580,6 +587,7 @@ fromSolverInstallPlan ::
 fromSolverInstallPlan f plan =
     mkInstallPlan (Graph.fromList pkgs')
                   (SolverInstallPlan.planIndepGoals plan)
+                  (SolverInstallPlan.planScore plan)
   where
     (_, pkgs') = foldl' f' (Map.empty, []) (SolverInstallPlan.reverseTopologicalOrder plan)
 
