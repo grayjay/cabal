@@ -1722,13 +1722,13 @@ elabBuildTargetWholeComponents elab =
 --
 pruneInstallPlanToTargets :: Map UnitId [PackageTarget]
                           -> ElaboratedInstallPlan -> ElaboratedInstallPlan
-pruneInstallPlanToTargets perPkgTargetsMap =
-    InstallPlan.new (IndependentGoals False)
+pruneInstallPlanToTargets perPkgTargetsMap plan =
+    InstallPlan.new (IndependentGoals False) (InstallPlan.planScore plan)
   . Graph.fromList
     -- We have to do this in two passes
   . pruneInstallPlanPass2
   . pruneInstallPlanPass1 perPkgTargetsMap
-  . InstallPlan.toList
+  $ InstallPlan.toList plan
 
 -- | This is a temporary data type, where we temporarily
 -- override the graph dependencies of an 'ElaboratedPackage',
