@@ -60,7 +60,8 @@ data SolverConfig = SolverConfig {
   strongFlags           :: StrongFlags,
   maxBackjumps          :: Maybe Int,
   enableBackjumping     :: EnableBackjumping,
-  goalOrder             :: Maybe (Variable QPN -> Variable QPN -> Ordering)
+  goalOrder             :: Maybe (Variable QPN -> Variable QPN -> Ordering),
+  maxInstallPlanScore   :: Maybe InstallPlanScore
 }
 
 -- | Run all solver phases.
@@ -95,10 +96,11 @@ solve :: SolverConfig                         -- ^ solver parameters
       -> (PN -> PackagePreferences)           -- ^ preferences
       -> Map PN [LabeledPackageConstraint]    -- ^ global constraints
       -> [PN]                                 -- ^ global goals
-      -> Log Message (Assignment, RevDepMap)
+      -> Log Message (Assignment, RevDepMap, InstallPlanScore)
 solve sc cinfo idx pkgConfigDB userPrefs userConstraints userGoals =
   explorePhase     $
   detectCycles     $
+  maxScorePhase    $
   heuristicsPhase  $
   preferencesPhase $
   validationPhase  $
@@ -107,6 +109,7 @@ solve sc cinfo idx pkgConfigDB userPrefs userConstraints userGoals =
   where
     explorePhase     = backjumpAndExplore (enableBackjumping sc) (countConflicts sc)
     detectCycles     = traceTree "cycles.json" id . detectCyclesPhase
+    maxScorePhase    = P.pruneWithMaxScore (maxInstallPlanScore sc) -- must come after all preferences
     heuristicsPhase  =
       let heuristicsTree = traceTree "heuristics.json" id
       in case goalOrder sc of
@@ -228,18 +231,18 @@ instance GSimpleTree (Tree QGoalReason) where
 -- | Replace all goal reasons with a dummy goal reason in the tree
 --
 -- This is useful for debugging (when experimenting with the impact of GRs)
-_removeGR :: Tree QGoalReason -> Tree QGoalReason
+_removeGR :: Tree a QGoalReason -> Tree a QGoalReason
 _removeGR = trav go
   where
-   go :: TreeF QGoalReason (Tree QGoalReason) -> TreeF QGoalReason (Tree QGoalReason)
+   go :: TreeF a QGoalReason (Tree a QGoalReason) -> TreeF a QGoalReason (Tree a QGoalReason)
    go (PChoiceF qpn _     psq) = PChoiceF qpn dummy     psq
    go (FChoiceF qfn _ a b psq) = FChoiceF qfn dummy a b psq
    go (SChoiceF qsn _ a   psq) = SChoiceF qsn dummy a   psq
    go (GoalChoiceF        psq) = GoalChoiceF            (goG psq)
-   go (DoneF rdm)              = DoneF rdm
+   go (DoneF rdm s)            = DoneF rdm s
    go (FailF cs reason)        = FailF cs reason
 
-   goG :: PSQ (Goal QPN) (Tree QGoalReason) -> PSQ (Goal QPN) (Tree QGoalReason)
+   goG :: PSQ (Goal QPN) (Tree a QGoalReason) -> PSQ (Goal QPN) (Tree a QGoalReason)
    goG = PSQ.fromList
        . L.map (\(Goal var _, subtree) -> (Goal var dummy, subtree))
        . PSQ.toList
