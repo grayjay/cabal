@@ -28,6 +28,7 @@ import Distribution.Solver.Modular.PSQ (PSQ)
 import Distribution.Solver.Modular.Version
 import Distribution.Solver.Modular.WeightedPSQ (WeightedPSQ)
 import qualified Distribution.Solver.Modular.WeightedPSQ as W
+import Distribution.Solver.Types.Settings
 import Distribution.Solver.Types.ConstraintSource
 import Distribution.Solver.Types.PackagePath
 
@@ -106,6 +107,7 @@ data FailReason = InconsistentInitialConstraints
                 | MultipleInstances
                 | DependenciesNotLinked String
                 | CyclicDependencies
+                | ExceedsMaxScore InstallPlanScore
   deriving (Eq, Show)
 
 -- | Functor for the tree type.

@@ -61,7 +61,8 @@ data SolverConfig = SolverConfig {
   strongFlags           :: StrongFlags,
   maxBackjumps          :: Maybe Int,
   enableBackjumping     :: EnableBackjumping,
-  goalOrder             :: Maybe (Variable QPN -> Variable QPN -> Ordering)
+  goalOrder             :: Maybe (Variable QPN -> Variable QPN -> Ordering),
+  maxInstallPlanScore   :: Maybe InstallPlanScore
 }
 
 -- | Run all solver phases.
@@ -96,10 +97,11 @@ solve :: SolverConfig                         -- ^ solver parameters
       -> (PN -> PackagePreferences)           -- ^ preferences
       -> Map PN [LabeledPackageConstraint]    -- ^ global constraints
       -> Set PN                               -- ^ global goals
-      -> Log Message (Assignment, RevDepMap)
+      -> Log Message (Assignment, RevDepMap, InstallPlanScore)
 solve sc cinfo idx pkgConfigDB userPrefs userConstraints userGoals =
   explorePhase     $
   detectCycles     $
+  maxScorePhase    $
   heuristicsPhase  $
   preferencesPhase $
   validationPhase  $
@@ -108,6 +110,7 @@ solve sc cinfo idx pkgConfigDB userPrefs userConstraints userGoals =
   where
     explorePhase     = backjumpAndExplore (enableBackjumping sc) (countConflicts sc)
     detectCycles     = traceTree "cycles.json" id . detectCyclesPhase
+    maxScorePhase    = P.pruneWithMaxScore (maxInstallPlanScore sc) -- must come after all preferences
     heuristicsPhase  =
       let heuristicsTree = traceTree "heuristics.json" id
       in case goalOrder sc of
