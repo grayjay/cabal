@@ -1,0 +1,181 @@
+name:          flags
+version:       0.1.0.0
+cabal-version: >=1.8
+
+flag flag00
+flag flag01
+flag flag02
+flag flag03
+flag flag04
+flag flag05
+flag flag06
+flag flag07
+flag flag08
+flag flag09
+flag flag10
+flag flag11
+flag flag12
+flag flag13
+flag flag14
+flag flag15
+flag flag16
+flag flag17
+flag flag18
+flag flag19
+flag flag20
+flag flag21
+flag flag22
+
+library
+  if flag(flag01) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag02) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag03) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag04) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag05) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag06) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag07) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag08) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag09) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag10) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag11) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag12) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag13) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag14) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag15) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag16) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag17) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag18) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+   if flag(flag21)
+     if !flag(flag00)
+       build-depends: unknown-package
+  if flag(flag19) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag20) && flag(flag22)
+    if flag(flag00)
+      build-depends: unknown-package
+  else
+    if flag(flag21)
+      if !flag(flag00)
+        build-depends: unknown-package
+  if flag(flag01) && flag(flag21)
+     if !flag(flag00)
+       build-depends: unknown-package
+  else
+    if flag(flag22)
+     if flag(flag00)
+       build-depends: unknown-package
+  if !flag(flag21) || !flag(flag22)
+    if !flag(flag00)
+       build-depends: unknown-package
+    if flag(flag00)
+      build-depends: unknown-package
