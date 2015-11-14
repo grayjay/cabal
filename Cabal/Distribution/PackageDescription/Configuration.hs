@@ -39,7 +39,8 @@ import Distribution.PackageDescription
 import Distribution.PackageDescription.Utils
          ( cabalBug, userBug )
 import Distribution.Version
-         ( VersionRange, anyVersion, intersectVersionRanges, withinRange )
+         ( VersionRange, anyVersion, intersectVersionRanges
+         , simplifyVersionRange, unionVersionRanges, withinRange )
 import Distribution.Compiler
          ( CompilerId(CompilerId) )
 import Distribution.System
@@ -59,6 +60,7 @@ import Data.Char ( isAlphaNum )
 import Data.Maybe ( mapMaybe, maybeToList )
 import Data.Map ( Map, fromListWith, toList )
 import qualified Data.Map as Map
+import qualified Data.Map.Strict as StrictMap
 import Data.Monoid as Mon
 
 ------------------------------------------------------------------------------
@@ -224,7 +226,8 @@ resolveWithFlags ::
   -> Either [Dependency] (TargetSet PDTagged, FlagAssignment)
        -- ^ Either the missing dependencies (error case), or a pair of
        -- (set of build targets with dependencies, chosen flag assignments)
-resolveWithFlags dom os arch impl constrs trees checkDeps = explore $ build dom []
+resolveWithFlags dom os arch impl constrs trees checkDeps =
+    either (Left . fromDepMapUnion) Right $ explore (build dom [])
   where
     extraConstrs = toDepMap constrs
 
@@ -234,12 +237,13 @@ resolveWithFlags dom os arch impl constrs trees checkDeps = explore $ build dom 
                           . mapTreeConds (fst . simplifyWithSysParams os arch impl))
                           trees
 
-    -- @try@ recursively tries all possible flag assignments in the domain and
-    -- either succeeds or returns a binary tree with the missing dependencies
-    -- encountered in each run.  Since the tree is constructed lazily, we
-    -- avoid some computation overhead in the successful case.
+    -- @explore@ searches a tree of assignments, backtracking whenever a flag
+    -- introduces a dependency that cannot be satisfied.  If there is no
+    -- solution, @explore@ returns the union of all dependencies that caused
+    -- it to backtrack.  Since the tree is constructed lazily, we avoid some
+    -- computation overhead in the successful case.
     explore :: BT FlagAssignment
-            -> Either [Dependency] (TargetSet PDTagged, FlagAssignment)
+            -> Either DepMapUnion (TargetSet PDTagged, FlagAssignment)
     explore (BT flags ts) =
         let targetSet = TargetSet $ flip map simplifiedTrees $
                 -- apply additional constraints to all dependencies
@@ -249,46 +253,45 @@ resolveWithFlags dom os arch impl constrs trees checkDeps = explore $ build dom 
         in case checkDeps (fromDepMap deps) of
              DepOk | null ts   -> Right (targetSet, flags)
                    | otherwise -> tryAll $ map explore ts
-             MissingDeps mds   -> Left mds
+             MissingDeps mds   -> Left (toDepMapUnion mds)
 
-    build :: [(FlagName, [Bool])]
-          -> FlagAssignment
-          -> BT FlagAssignment
+    -- Builds a tree of all possible flag assignments.  Internal nodes
+    -- have only partial assignments.
+    build :: [(FlagName, [Bool])] -> FlagAssignment -> BT FlagAssignment
     build [] flags = BT flags []
     build ((n, vals):rest) flags =
         BT flags $ map (\v -> build rest ((n, v):flags)) vals
 
-    tryAll :: [Either [a] b] -> Either [a] b
+    tryAll :: [Either DepMapUnion a] -> Either DepMapUnion a
     tryAll = foldr mp mz
 
     -- special version of `mplus' for our local purposes
-    mp :: Either [a] b -> Either [a] b -> Either [a] b
+    mp :: Either DepMapUnion a -> Either DepMapUnion a -> Either DepMapUnion a
     mp m@(Right _) _           = m
     mp _           m@(Right _) = m
-    mp (Left xs)   (Left ys)   = let shortest = findShortest xs ys
-                                 in shortest `seq` Left shortest
+    mp (Left xs)   (Left ys)   =
+        let union = StrictMap.unionWith
+                    (\x y -> simplifyVersionRange $ unionVersionRanges x y)
+                    (unDepMapUnion xs) (unDepMapUnion ys)
+        in union `seq` Left (DepMapUnion union)
 
     -- `mzero'
-    mz :: Either [a] b
-    mz = Left []
+    mz :: Either DepMapUnion a
+    mz = Left (DepMapUnion Map.empty)
 
     env :: FlagAssignment -> FlagName -> Either FlagName Bool
     env flags flag = (maybe (Left flag) Right . lookup flag) flags
 
-    -- for the error case we inspect our lazy tree of missing dependencies and
-    -- pick the shortest list of missing dependencies
-    findShortest l r =
-        case (l,r) of
-          ([], xs) -> xs  -- [] is too short
-          (xs, []) -> xs
-          ([x], _) -> [x] -- single elem is optimum
-          (_, [x]) -> [x]
-          (xs, ys) -> if lazyLengthCmp xs ys
-                      then xs else ys
-    -- lazy variant of @\xs ys -> length xs <= length ys@
-    lazyLengthCmp [] _ = True
-    lazyLengthCmp _ [] = False
-    lazyLengthCmp (_:xs) (_:ys) = lazyLengthCmp xs ys
+-- | A map of dependencies that combines version ranges using 'unionVersionRanges'.
+newtype DepMapUnion = DepMapUnion { unDepMapUnion :: Map PackageName VersionRange }
+  deriving (Show, Read)
+
+toDepMapUnion :: [Dependency] -> DepMapUnion
+toDepMapUnion ds =
+  DepMapUnion $ fromListWith unionVersionRanges [ (p,vr) | Dependency p vr <- ds ]
+
+fromDepMapUnion :: DepMapUnion -> [Dependency]
+fromDepMapUnion m = [ Dependency p vr | (p,vr) <- toList (unDepMapUnion m) ]
 
 -- | A map of dependencies.  Newtyped since the default monoid instance is not
 --   appropriate.  The monoid instance uses 'intersectVersionRanges'.
