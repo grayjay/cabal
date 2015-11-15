@@ -199,8 +199,9 @@ data BT a = BT a [BT a] -- very simple binary tree
 -- resulting data, the associated dependencies, and the chosen flag
 -- assignments.
 --
--- In case of failure, the _smallest_ number of of missing dependencies is
--- returned. [TODO: Could also be specified with a function argument.]
+-- In case of failure, the union of the dependencies that led to backtracking
+-- on all branches is returned.
+-- [TODO: Could also be specified with a function argument.]
 --
 -- TODO: The current algorithm is rather naive.  A better approach would be to:
 --
@@ -472,9 +473,10 @@ instance Monoid PDTagged where
 --
 -- This function will fail if it cannot find a flag assignment that leads to
 -- satisfiable dependencies.  (It will not try alternative assignments for
--- explicitly specified flags.)  In case of failure it will return a /minimum/
--- number of dependencies that could not be satisfied.  On success, it will
--- return the package description and the full flag assignment chosen.
+-- explicitly specified flags.)  In case of failure it will return the missing
+-- dependencies that it encountered when trying different flag assignments.
+-- On success, it will return the package description and the full flag
+-- assignment chosen.
 --
 finalizePackageDescription ::
      FlagAssignment  -- ^ Explicitly specified flag assignments
