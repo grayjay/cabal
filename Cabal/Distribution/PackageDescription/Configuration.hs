@@ -60,7 +60,6 @@ import Data.Char ( isAlphaNum )
 import Data.Maybe ( mapMaybe, maybeToList )
 import Data.Map ( Map, fromListWith, toList )
 import qualified Data.Map as Map
-import qualified Data.Map.Strict as StrictMap
 import Data.Monoid as Mon
 
 ------------------------------------------------------------------------------
@@ -270,9 +269,9 @@ resolveWithFlags dom os arch impl constrs trees checkDeps =
     mp m@(Right _) _           = m
     mp _           m@(Right _) = m
     mp (Left xs)   (Left ys)   =
-        let union = StrictMap.unionWith
-                    (\x y -> simplifyVersionRange $ unionVersionRanges x y)
+        let union = Map.foldrWithKey (Map.insertWith' combine)
                     (unDepMapUnion xs) (unDepMapUnion ys)
+            combine x y = simplifyVersionRange $ unionVersionRanges x y
         in union `seq` Left (DepMapUnion union)
 
     -- `mzero'
