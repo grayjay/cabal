@@ -190,7 +190,7 @@ instance Monoid d => Mon.Monoid (DepTestRslt d) where
     mappend (MissingDeps d) (MissingDeps d') = MissingDeps (d `mappend` d')
 
 
-data BT a = BT a [BT a] -- very simple binary tree
+data Tree a = Tree a [Tree a] -- very simple tree
 
 
 -- | Try to find a flag assignment that satisfies the constraints of all trees.
@@ -242,9 +242,9 @@ resolveWithFlags dom os arch impl constrs trees checkDeps =
     -- solution, @explore@ returns the union of all dependencies that caused
     -- it to backtrack.  Since the tree is constructed lazily, we avoid some
     -- computation overhead in the successful case.
-    explore :: BT FlagAssignment
+    explore :: Tree FlagAssignment
             -> Either DepMapUnion (TargetSet PDTagged, FlagAssignment)
-    explore (BT flags ts) =
+    explore (Tree flags ts) =
         let targetSet = TargetSet $ flip map simplifiedTrees $
                 -- apply additional constraints to all dependencies
                 first (`constrainBy` extraConstrs) .
@@ -257,10 +257,10 @@ resolveWithFlags dom os arch impl constrs trees checkDeps =
 
     -- Builds a tree of all possible flag assignments.  Internal nodes
     -- have only partial assignments.
-    build :: [(FlagName, [Bool])] -> FlagAssignment -> BT FlagAssignment
-    build [] flags = BT flags []
+    build :: [(FlagName, [Bool])] -> FlagAssignment -> Tree FlagAssignment
+    build [] flags = Tree flags []
     build ((n, vals):rest) flags =
-        BT flags $ map (\v -> build rest ((n, v):flags)) vals
+        Tree flags $ map (\v -> build rest ((n, v):flags)) vals
 
     tryAll :: [Either DepMapUnion a] -> Either DepMapUnion a
     tryAll = foldr mp mz
@@ -284,7 +284,6 @@ resolveWithFlags dom os arch impl constrs trees checkDeps =
 
 -- | A map of dependencies that combines version ranges using 'unionVersionRanges'.
 newtype DepMapUnion = DepMapUnion { unDepMapUnion :: Map PackageName VersionRange }
-  deriving (Show, Read)
 
 toDepMapUnion :: [Dependency] -> DepMapUnion
 toDepMapUnion ds =
