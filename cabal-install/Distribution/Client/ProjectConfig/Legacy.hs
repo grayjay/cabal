@@ -497,6 +497,7 @@ convertToLegacySharedConfig
       installMaxBackjumps      = projectConfigMaxBackjumps,
       installMaxScore          = mempty, --projectConfigMaxScore,
       installUpgradeDeps       = mempty, --projectConfigUpgradeDeps,
+      installFindBestSolution  = mempty, --projectConfigFindBestSolution,
       installReorderGoals      = projectConfigReorderGoals,
       installCountConflicts    = projectConfigCountConflicts,
       installIndependentGoals  = mempty, --projectConfigIndependentGoals,
