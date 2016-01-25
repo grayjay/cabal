@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Distribution.Solver.Types.Settings
-    ( ReorderGoals(..)
+    ( FindBestSolution(..)
+    , ReorderGoals(..)
     , IndependentGoals(..)
     , AvoidReinstalls(..)
     , ShadowPkgs(..)
@@ -15,6 +16,9 @@ module Distribution.Solver.Types.Settings
 import Distribution.Simple.Setup ( BooleanFlag(..) )
 import Distribution.Compat.Binary (Binary(..))
 import GHC.Generics (Generic)
+
+newtype FindBestSolution = FindBestSolution Bool
+  deriving (BooleanFlag, Eq, Generic, Show)
 
 newtype ReorderGoals = ReorderGoals Bool
   deriving (BooleanFlag, Eq, Generic, Show)
@@ -34,6 +38,7 @@ newtype StrongFlags = StrongFlags Bool
 newtype EnableBackjumping = EnableBackjumping Bool
   deriving (BooleanFlag, Eq, Generic, Show)
 
+instance Binary FindBestSolution
 instance Binary ReorderGoals
 instance Binary IndependentGoals
 instance Binary AvoidReinstalls

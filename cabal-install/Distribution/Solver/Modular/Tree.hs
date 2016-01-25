@@ -90,6 +90,7 @@ data FailReason = InconsistentInitialConstraints
                 | DependenciesNotLinked String
                 | CyclicDependencies
                 | ExceedsMaxScore InstallPlanScore
+                | SearchingForBetterScore InstallPlanScore
   deriving (Eq, Show)
 
 -- | Functor for the tree type.
