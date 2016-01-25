@@ -12,7 +12,7 @@ import Data.List as L
 import Data.Maybe (isNothing)
 import Data.Map as M
 
-import Distribution.Client.Dependency.Types -- from Cabal
+import Distribution.Client.Dependency.Types
 
 import Distribution.Client.Dependency.Modular.Dependency
 import Distribution.Client.Dependency.Modular.Message
@@ -29,29 +29,44 @@ type Log m a = Progress m () a
 messages :: Progress step fail done -> [step]
 messages = foldProgress (:) (const []) (const [])
 
+data Solution = FirstSolution | BeforeBackjumpLimit | BestSolution
+
+showSolution :: Solution -> String
+showSolution FirstSolution       = "first solution"
+showSolution BeforeBackjumpLimit = "best solution before backjump limit"
+showSolution BestSolution        = "best solution"
+
 -- | Postprocesses a log file. Takes as an argument a limit on allowed backjumps.
 -- If the limit is 'Nothing', then infinitely many backjumps are allowed. If the
 -- limit is 'Just 0', backtracking is completely disabled.
-logToProgress :: Maybe Int -> Log Message a -> Progress String String a
+logToProgress :: Maybe Int -> Log Message Plan -> Progress String String Plan
 logToProgress mbj l = let
                         es = proc (Just 0) l -- catch first error (always)
                         ms = useFirstError (proc mbj l)
                       in go es es -- trace for first error
                             (showMessages (const True) True ms) -- run with backjump limit applied
+                          >>= \(plan, s) -> Step ("Using " ++ showSolution s) (Done plan)
   where
     -- Proc takes the allowed number of backjumps and a 'Progress' and explores the
     -- messages until the maximum number of backjumps has been reached. It filters out
     -- and ignores repeated backjumps. If proc reaches the backjump limit, it truncates
     -- the 'Progress' and ends it with the last conflict set. Otherwise, it leaves the
     -- original success result or replaces the original failure with 'Nothing'.
-    proc :: Maybe Int -> Progress Message a b -> Progress Message (Maybe (ConflictSet QPN)) b
-    proc _        (Done x)                          = Done x
-    proc _        (Fail _)                          = Fail Nothing
-    proc mbj'     (Step   (Failure cs Backjump) xs@(Step Leave (Step (Failure cs' Backjump) _)))
-      | cs == cs'                                   = proc mbj' xs -- repeated backjumps count as one
-    proc (Just 0) (Step   (Failure cs Backjump)  _) = Fail (Just cs)
-    proc (Just n) (Step x@(Failure _  Backjump) xs) = Step x (proc (Just (n - 1)) xs)
-    proc mbj'     (Step x                       xs) = Step x (proc mbj'           xs)
+    proc :: Maybe Int -> Progress Message a Plan -> Progress Message (Maybe (ConflictSet QPN)) (Plan, Solution)
+    proc _        (Done x)                                  = Done (x, FirstSolution)
+
+    -- TODO: This pattern tries to match on the best solution found after an
+    -- exhaustive search, but it is a hack. It relies on the exhaustive search
+    -- ending with a 'Failure' message and then a 'Fail'.
+    proc _        (Step   (Failure _  _ (Just x)) (Fail _)) = Done (x, BestSolution)
+
+    proc _        (Fail _)                                  = Fail Nothing
+    proc mbj'     (Step   (Failure cs Backjump _) xs@(Step Leave (Step (Failure cs' Backjump _) _)))
+      | cs == cs'                                           = proc mbj' xs -- repeated backjumps count as one
+    proc (Just 0) (Step   (Failure cs Backjump Nothing)  _) = Fail (Just cs)
+    proc (Just 0) (Step   (Failure _  Backjump (Just x)) _) = Done (x, BeforeBackjumpLimit)
+    proc (Just n) (Step x@(Failure _  Backjump _) xs)       = Step x (proc (Just (n - 1)) xs)
+    proc mbj'     (Step x                         xs)       = Step x (proc mbj'           xs)
 
     -- Sets the conflict set from the first backjump as the final error, and records
     -- whether the search was exhaustive.
@@ -59,12 +74,12 @@ logToProgress mbj l = let
                   -> Progress Message (Bool, Maybe (ConflictSet QPN)) b
     useFirstError = replace Nothing
       where
-        replace _       (Done x)                          = Done x
-        replace cs'     (Fail cs)                         = -- 'Nothing' means backjump limit not reached.
-                                                            -- Prefer first error over later error.
-                                                            Fail (isNothing cs, cs' <|> cs)
-        replace Nothing (Step x@(Failure cs Backjump) xs) = Step x $ replace (Just cs) xs
-        replace cs'     (Step x                       xs) = Step x $ replace cs' xs
+        replace _       (Done x)                            = Done x
+        replace cs'     (Fail cs)                           = -- 'Nothing' means backjump limit not reached.
+                                                              -- Prefer first error over later error.
+                                                              Fail (isNothing cs, cs' <|> cs)
+        replace Nothing (Step x@(Failure cs Backjump _) xs) = Step x $ replace (Just cs) xs
+        replace cs'     (Step x                         xs) = Step x $ replace cs' xs
 
     -- The first two arguments are both supposed to be the log up to the first error.
     -- That's the error that will always be printed in case we do not find a solution.

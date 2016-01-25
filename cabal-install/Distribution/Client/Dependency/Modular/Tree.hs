@@ -88,6 +88,7 @@ data FailReason = InconsistentInitialConstraints
                 | MultipleInstances
                 | DependenciesNotLinked String
                 | ExceedsMaxScore InstallPlanScore
+                | SearchingForBetterScore InstallPlanScore
   deriving (Eq, Show)
 
 -- | Functor for the tree type.

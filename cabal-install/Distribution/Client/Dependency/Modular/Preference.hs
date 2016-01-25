@@ -11,8 +11,8 @@ module Distribution.Client.Dependency.Modular.Preference
     , preferBaseGoalChoice
     , preferLinked
     , preferPackagePreferences
-    , pruneWithMaxScore
     , requireInstalled
+    , scoreTree
     ) where
 
 -- Reordering or pruning the tree in order to prefer or make certain choices.
@@ -106,35 +106,23 @@ preferPackagePreferences pcs =
     installed (POption (I _ (Inst _)) _) = 0
     installed _                          = 1
 
-data ScoringState = ScoringState {
-      -- | The sum of the scores of all nodes from the root to the current node.
-      ssTotalScore  :: InstallPlanScore
+type Score = Reader ScoringState
 
-      -- | The conflict set that should be used if a node exceeds the max score.
-    , ssConflictSet :: ConflictSet QPN
-    }
-    deriving Show
-
-type PruneWithScore = Reader ScoringState
-
--- | Traversal that prunes all nodes that exceed the max score, even if they are
--- not 'Done'. It also records the score on 'Done' nodes.
-pruneWithMaxScore :: Maybe InstallPlanScore
-                  -> Tree a QGoalReasonChain
-                  -> Tree InstallPlanScore QGoalReasonChain
-pruneWithMaxScore maxScore = (`runReader` initSS) . cata go
+-- | Traversal that scores all choice and 'Done' nodes.
+scoreTree :: Tree a QGoalReasonChain -> Tree ScoringState ScoringState
+scoreTree = (`runReader` initSS) . cata go
   where
     go :: TreeF a QGoalReasonChain
-              (PruneWithScore (Tree InstallPlanScore QGoalReasonChain))
-       -> PruneWithScore (Tree InstallPlanScore QGoalReasonChain)
-    go (PChoiceF qpn gr     cs) =
-      PChoice qpn gr     <$> processChildren (P qpn) gr cs
-    go (FChoiceF qfn gr t m cs) =
-      FChoice qfn gr t m <$> processChildren (F qfn) gr cs
-    go (SChoiceF qsn gr t   cs) =
-      SChoice qsn gr t   <$> processChildren (S qsn) gr cs
+              (Score (Tree ScoringState ScoringState))
+       -> Score (Tree ScoringState ScoringState)
+    go (PChoiceF qpn gr     cs)       =
+      PChoice qpn <$> ask                       <*> processChildren (P qpn) gr cs
+    go (FChoiceF qfn gr t m cs)       =
+      FChoice qfn <$> ask <*> pure t <*> pure m <*> processChildren (F qfn) gr cs
+    go (SChoiceF qsn gr t   cs)       =
+      SChoice qsn <$> ask <*> pure t            <*> processChildren (S qsn) gr cs
     go (GoalChoiceF         cs)       = GoalChoice     <$> T.sequence cs
-    go (DoneF revDepMap _)            = Done revDepMap <$> asks ssTotalScore
+    go (DoneF revDepMap _)            = Done revDepMap <$> ask
     go (FailF conflictSet failReason) = return $ Fail conflictSet failReason
 
     -- TODO: This function currently scores a node by dividing its index in the
@@ -148,20 +136,20 @@ pruneWithMaxScore maxScore = (`runReader` initSS) . cata go
     -- tree.
     processChildren :: Var QPN
                     -> QGoalReasonChain
-                    -> W.WeightedPSQ w k (PruneWithScore (Tree a QGoalReasonChain))
-                    -> PruneWithScore (W.WeightedPSQ w k (Tree a QGoalReasonChain))
+                    -> W.WeightedPSQ w k (Score (Tree a ScoringState))
+                    -> Score (W.WeightedPSQ w k (Tree a ScoringState))
     processChildren var gr cs =
-      let processChild c i = scoreOrPrune var gr (i == 0) (fromIntegral i / l) c
+      let processChild c i = scoreNode var gr (i == 0) (fromIntegral i / l) c
           l = fromIntegral (W.length cs)
       in  l `seq` T.traverse (uncurry processChild) (W.zipWithIndex cs)
 
-    scoreOrPrune :: Var QPN
-                 -> QGoalReasonChain
-                 -> Bool
-                 -> InstallPlanScore
-                 -> PruneWithScore (Tree a QGoalReasonChain)
-                 -> PruneWithScore (Tree a QGoalReasonChain)
-    scoreOrPrune var gr isZero score r = ask >>= \ss ->
+    scoreNode :: Var QPN
+              -> QGoalReasonChain
+              -> Bool
+              -> InstallPlanScore
+              -> Score (Tree a ScoringState)
+              -> Score (Tree a ScoringState)
+    scoreNode var gr isZero score r = ask >>= \ss ->
       let total = score + ssTotalScore ss
           conflictSet =
             if isZero
@@ -181,9 +169,7 @@ pruneWithMaxScore maxScore = (`runReader` initSS) . cata go
               else insertCS var ConflictLessThan $
                    unionCS (goalReasonChainToVars gr) (ssConflictSet ss)
           ss' = ScoringState total conflictSet
-      in if maybe False (total >) maxScore
-           then return $ Fail conflictSet (ExceedsMaxScore total)
-           else local (const ss') r
+      in local (const ss') r
 
     initSS :: ScoringState
     initSS = ScoringState {

@@ -23,6 +23,8 @@ module Distribution.Client.Dependency.Types (
     showInstallPlanScore,
     defaultInstallPlanScore,
 
+    SolverExhaustiveness(..),
+
     AllowNewer(..), isAllowNewer,
     PackageConstraint(..),
     showPackageConstraint,
@@ -139,6 +141,8 @@ showInstallPlanScore (InstallPlanScore x) = show x
 -- the Topdown solver.
 defaultInstallPlanScore :: InstallPlanScore
 defaultInstallPlanScore = 0
+
+data SolverExhaustiveness = FindFirstSolution | FindBestSolution
 
 -- | Per-package constraints. Package constraints must be respected by the
 -- solver. Multiple constraints for each package can be given, though obviously

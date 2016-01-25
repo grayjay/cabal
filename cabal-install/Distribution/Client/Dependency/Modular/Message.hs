@@ -2,6 +2,7 @@
 
 module Distribution.Client.Dependency.Modular.Message (
     Message(..),
+    Plan,
     showMessages
   ) where
 
@@ -10,6 +11,7 @@ import Prelude hiding (pi)
 
 import Distribution.Text -- from Cabal
 
+import Distribution.Client.Dependency.Modular.Assignment
 import Distribution.Client.Dependency.Modular.Dependency
 import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Package
@@ -17,6 +19,7 @@ import Distribution.Client.Dependency.Modular.Tree
          ( FailReason(..), POption(..) )
 import Distribution.Client.Dependency.Types
          ( ConstraintSource(..), showConstraintSource
+         , InstallPlanScore
          , Progress(..), showInstallPlanScore )
 
 data Message =
@@ -27,7 +30,9 @@ data Message =
   | TryS QSN Bool
   | Next (Goal QPN)
   | Success
-  | Failure (ConflictSet QPN) FailReason
+  | Failure (ConflictSet QPN) FailReason (Maybe Plan)
+
+type Plan = (Assignment, RevDepMap, InstallPlanScore)
 
 -- | Transforms the structured message type to actual messages (strings).
 --
@@ -55,18 +60,18 @@ showMessages p sl = go [] 0
     go !_ !_ (Done x)                           = Done x
     go !_ !_ (Fail x)                           = Fail x
     -- complex patterns
-    go !v !l (Step (TryP qpn i) (Step Enter (Step (Failure c fr) (Step Leave ms)))) =
+    go !v !l (Step (TryP qpn i) (Step Enter (Step (Failure c fr _) (Step Leave ms)))) =
         goPReject v l qpn [i] c fr ms
-    go !v !l (Step (TryF qfn b) (Step Enter (Step (Failure c fr) (Step Leave ms)))) =
+    go !v !l (Step (TryF qfn b) (Step Enter (Step (Failure c fr _) (Step Leave ms)))) =
         (atLevel (add (F qfn) v) l $ "rejecting: " ++ showQFNBool qfn b ++ showFR c fr) (go v l ms)
-    go !v !l (Step (TryS qsn b) (Step Enter (Step (Failure c fr) (Step Leave ms)))) =
+    go !v !l (Step (TryS qsn b) (Step Enter (Step (Failure c fr _) (Step Leave ms)))) =
         (atLevel (add (S qsn) v) l $ "rejecting: " ++ showQSNBool qsn b ++ showFR c fr) (go v l ms)
     go !v !l (Step (Next (Goal (P qpn) gr)) (Step (TryP qpn' i) ms@(Step Enter (Step (Next _) _)))) =
         (atLevel (add (P qpn) v) l $ "trying: " ++ showQPNPOpt qpn' i ++ showGRs gr) (go (add (P qpn) v) l ms)
-    go !v !l (Step (Next (Goal (P qpn) gr)) (Step (Failure c fr) ms)) =
+    go !v !l (Step (Next (Goal (P qpn) gr)) (Step (Failure c fr _) ms)) =
         let v' = add (P qpn) v
         in (atLevel v' l $ showPackageGoal qpn gr) $ (atLevel v' l $ showFailure c fr) (go v l ms)
-    go !v !l (Step (Failure c Backjump) ms@(Step Leave (Step (Failure c' Backjump) _)))
+    go !v !l (Step (Failure c Backjump _) ms@(Step Leave (Step (Failure c' Backjump _) _)))
         | c == c' = go v l ms
     -- standard display
     go !v !l (Step Enter                    ms) = go v          (l+1) ms
@@ -77,7 +82,7 @@ showMessages p sl = go [] 0
     go !v !l (Step (Next (Goal (P qpn) gr)) ms) = (atLevel (add (P qpn) v) l $ showPackageGoal qpn gr) (go v l ms)
     go !v !l (Step (Next _)                 ms) = go v l ms -- ignore flag goals in the log
     go !v !l (Step (Success)                ms) = (atLevel v l $ "done") (go v l ms)
-    go !v !l (Step (Failure c fr)           ms) = (atLevel v l $ showFailure c fr) (go v l ms)
+    go !v !l (Step (Failure c fr _)         ms) = (atLevel v l $ showFailure c fr) (go v l ms)
 
     showPackageGoal :: QPN -> QGoalReasonChain -> String
     showPackageGoal qpn gr = "next goal: " ++ showQPN qpn ++ showGRs gr
@@ -97,7 +102,7 @@ showMessages p sl = go [] 0
               -> FailReason
               -> Progress Message a b
               -> Progress String a b
-    goPReject v l qpn is c fr (Step (TryP qpn' i) (Step Enter (Step (Failure _ fr') (Step Leave ms))))
+    goPReject v l qpn is c fr (Step (TryP qpn' i) (Step Enter (Step (Failure _ fr' _) (Step Leave ms))))
       | qpn == qpn' && fr == fr' = goPReject v l qpn (i : is) c fr ms
     goPReject v l qpn is c fr ms =
         (atLevel (P qpn : v) l $ "rejecting: " ++ L.intercalate ", " (map (showQPNPOpt qpn) (reverse is)) ++ showFR c fr) (go v l ms)
@@ -143,6 +148,8 @@ showFR c Backjump                         = " (backjumping, conflict set: " ++ s
 showFR _ MultipleInstances                = " (multiple instances)"
 showFR c (DependenciesNotLinked msg)      = " (dependencies not linked: " ++ msg ++ "; conflict set: " ++ showCS c ++ ")"
 showFR _ (ExceedsMaxScore score)          = " (exceeds max score: " ++ showInstallPlanScore score ++ ")"
+showFR _ (SearchingForBetterScore score)  = " (continuing after finding solution with score "
+                                             ++ showInstallPlanScore score ++ ")"
 -- The following are internal failures. They should not occur. In the
 -- interest of not crashing unnecessarily, we still just print an error
 -- message though.

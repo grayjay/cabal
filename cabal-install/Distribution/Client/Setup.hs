@@ -58,7 +58,7 @@ import Distribution.Client.BuildReports.Types
          ( ReportLevel(..) )
 import Distribution.Client.Dependency.Types
          ( AllowNewer(..), PreSolver(..), ConstraintSource(..)
-         , InstallPlanScore(..) )
+         , InstallPlanScore(..), SolverExhaustiveness(..) )
 import qualified Distribution.Client.Init.Types as IT
          ( InitFlags(..), PackageType(..) )
 import Distribution.Client.Targets
@@ -611,6 +611,7 @@ data FetchFlags = FetchFlags {
       fetchSolver           :: Flag PreSolver,
       fetchMaxBackjumps     :: Flag Int,
       fetchMaxScore         :: Flag InstallPlanScore,
+      fetchExhaustiveness   :: Flag SolverExhaustiveness,
       fetchReorderGoals     :: Flag Bool,
       fetchIndependentGoals :: Flag Bool,
       fetchShadowPkgs       :: Flag Bool,
@@ -626,6 +627,7 @@ defaultFetchFlags = FetchFlags {
     fetchSolver           = Flag defaultSolver,
     fetchMaxBackjumps     = Flag defaultMaxBackjumps,
     fetchMaxScore         = mempty,
+    fetchExhaustiveness   = Flag FindFirstSolution,
     fetchReorderGoals     = Flag False,
     fetchIndependentGoals = Flag False,
     fetchShadowPkgs       = Flag False,
@@ -673,6 +675,7 @@ fetchCommand = CommandUI {
        optionSolverFlags showOrParseArgs
                          fetchMaxBackjumps     (\v flags -> flags { fetchMaxBackjumps     = v })
                          fetchMaxScore         (\v flags -> flags { fetchMaxScore         = v })
+                         fetchExhaustiveness   (\v flags -> flags { fetchExhaustiveness   = v })
                          fetchReorderGoals     (\v flags -> flags { fetchReorderGoals     = v })
                          fetchIndependentGoals (\v flags -> flags { fetchIndependentGoals = v })
                          fetchShadowPkgs       (\v flags -> flags { fetchShadowPkgs       = v })
@@ -691,6 +694,7 @@ data FreezeFlags = FreezeFlags {
       freezeSolver           :: Flag PreSolver,
       freezeMaxBackjumps     :: Flag Int,
       freezeMaxScore         :: Flag InstallPlanScore,
+      freezeExhaustiveness   :: Flag SolverExhaustiveness,
       freezeReorderGoals     :: Flag Bool,
       freezeIndependentGoals :: Flag Bool,
       freezeShadowPkgs       :: Flag Bool,
@@ -706,6 +710,7 @@ defaultFreezeFlags = FreezeFlags {
     freezeSolver           = Flag defaultSolver,
     freezeMaxBackjumps     = Flag defaultMaxBackjumps,
     freezeMaxScore         = mempty,
+    freezeExhaustiveness   = Flag FindFirstSolution,
     freezeReorderGoals     = Flag False,
     freezeIndependentGoals = Flag False,
     freezeShadowPkgs       = Flag False,
@@ -752,6 +757,7 @@ freezeCommand = CommandUI {
        optionSolverFlags showOrParseArgs
                          freezeMaxBackjumps     (\v flags -> flags { freezeMaxBackjumps     = v })
                          freezeMaxScore         (\v flags -> flags { freezeMaxScore         = v })
+                         freezeExhaustiveness   (\v flags -> flags { freezeExhaustiveness   = v })
                          freezeReorderGoals     (\v flags -> flags { freezeReorderGoals     = v })
                          freezeIndependentGoals (\v flags -> flags { freezeIndependentGoals = v })
                          freezeShadowPkgs       (\v flags -> flags { freezeShadowPkgs       = v })
@@ -1165,6 +1171,7 @@ data InstallFlags = InstallFlags {
     installDryRun           :: Flag Bool,
     installMaxBackjumps     :: Flag Int,
     installMaxScore         :: Flag InstallPlanScore,
+    installExhaustiveness   :: Flag SolverExhaustiveness,
     installReorderGoals     :: Flag Bool,
     installIndependentGoals :: Flag Bool,
     installShadowPkgs       :: Flag Bool,
@@ -1194,6 +1201,7 @@ defaultInstallFlags = InstallFlags {
     installDryRun          = Flag False,
     installMaxBackjumps    = Flag defaultMaxBackjumps,
     installMaxScore        = mempty,
+    installExhaustiveness  = Flag FindFirstSolution,
     installReorderGoals    = Flag False,
     installIndependentGoals= Flag False,
     installShadowPkgs      = Flag False,
@@ -1360,6 +1368,7 @@ installOptions showOrParseArgs =
       optionSolverFlags showOrParseArgs
                         installMaxBackjumps     (\v flags -> flags { installMaxBackjumps     = v })
                         installMaxScore         (\v flags -> flags { installMaxScore         = v })
+                        installExhaustiveness   (\v flags -> flags { installExhaustiveness   = v })
                         installReorderGoals     (\v flags -> flags { installReorderGoals     = v })
                         installIndependentGoals (\v flags -> flags { installIndependentGoals = v })
                         installShadowPkgs       (\v flags -> flags { installShadowPkgs       = v })
@@ -1466,6 +1475,7 @@ instance Monoid InstallFlags where
     installOverrideReinstall = mempty,
     installMaxBackjumps    = mempty,
     installMaxScore        = mempty,
+    installExhaustiveness  = mempty,
     installUpgradeDeps     = mempty,
     installReorderGoals    = mempty,
     installIndependentGoals= mempty,
@@ -1493,6 +1503,7 @@ instance Monoid InstallFlags where
     installOverrideReinstall = combine installOverrideReinstall,
     installMaxBackjumps    = combine installMaxBackjumps,
     installMaxScore        = combine installMaxScore,
+    installExhaustiveness  = combine installExhaustiveness,
     installUpgradeDeps     = combine installUpgradeDeps,
     installReorderGoals    = combine installReorderGoals,
     installIndependentGoals= combine installIndependentGoals,
@@ -2179,12 +2190,13 @@ optionSolver get set =
 optionSolverFlags :: ShowOrParseArgs
                   -> (flags -> Flag Int   ) -> (Flag Int    -> flags -> flags)
                   -> (flags -> Flag InstallPlanScore) -> (Flag InstallPlanScore -> flags -> flags)
+                  -> (flags -> Flag SolverExhaustiveness) -> (Flag SolverExhaustiveness -> flags -> flags)
                   -> (flags -> Flag Bool  ) -> (Flag Bool   -> flags -> flags)
                   -> (flags -> Flag Bool  ) -> (Flag Bool   -> flags -> flags)
                   -> (flags -> Flag Bool  ) -> (Flag Bool   -> flags -> flags)
                   -> (flags -> Flag Bool  ) -> (Flag Bool   -> flags -> flags)
                   -> [OptionField flags]
-optionSolverFlags showOrParseArgs getmbj setmbj getms setms getrg setrg _getig _setig getsip setsip getstrfl setstrfl =
+optionSolverFlags showOrParseArgs getmbj setmbj getms setms getse setse getrg setrg _getig _setig getsip setsip getstrfl setstrfl =
   [ option [] ["max-backjumps"]
       ("Maximum number of backjumps allowed while solving (default: " ++ show defaultMaxBackjumps ++ "). Use a negative number to enable unlimited backtracking. Use 0 to disable backtracking completely.")
       getmbj setmbj
@@ -2193,11 +2205,19 @@ optionSolverFlags showOrParseArgs getmbj setmbj getms setms getrg setrg _getig _
                     (map show . flagToList))
   , option [] ["max-score"]
     -- TODO: This option needs a more detailed description.
-      ("Maximum score for the install plan.")
+      "Maximum score for the install plan."
       getms setms
       (reqArg "NUM" (readP_to_E ("Cannot parse number: "++)
                                 (fmap (toFlag . InstallPlanScore) (Parse.readS_to_P reads)))
                     (map show . flagToList))
+  , option [] ["find-best-solution"]
+      "Find the best-scoring solution within the backjump limit."
+      (let exhToBool FindBestSolution  = True
+           exhToBool FindFirstSolution = False
+      in fmap exhToBool . getse)
+      (let boolToExh best = if best then FindBestSolution else FindFirstSolution
+      in setse . fmap boolToExh)
+      (yesNoOpt showOrParseArgs)
   , option [] ["reorder-goals"]
       "Try to reorder goals according to certain heuristics. Slows things down on average, but may make backtracking faster for some packages."
       getrg setrg

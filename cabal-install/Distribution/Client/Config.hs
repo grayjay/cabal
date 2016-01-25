@@ -238,6 +238,7 @@ instance Monoid SavedConfig where
         installDryRun                = combine installDryRun,
         installMaxBackjumps          = combine installMaxBackjumps,
         installMaxScore              = combine installMaxScore,
+        installExhaustiveness        = combine installExhaustiveness,
         installReorderGoals          = combine installReorderGoals,
         installIndependentGoals      = combine installIndependentGoals,
         installShadowPkgs            = combine installShadowPkgs,

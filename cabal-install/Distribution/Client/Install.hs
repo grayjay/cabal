@@ -357,6 +357,8 @@ planPackages comp platform mSandboxPkgInfo solver
 
       . setMaxScore maxScore
 
+      . setExhaustiveness exhaustiveness
+
       . setIndependentGoals independentGoals
 
       . setReorderGoals reorderGoals
@@ -421,6 +423,7 @@ planPackages comp platform mSandboxPkgInfo solver
     strongFlags      = fromFlag (installStrongFlags       installFlags)
     maxBackjumps     = fromFlag (installMaxBackjumps      installFlags)
     maxScore         = flagToMaybe (installMaxScore       installFlags)
+    exhaustiveness   = fromFlag (installExhaustiveness    installFlags)
     upgradeDeps      = fromFlag (installUpgradeDeps       installFlags)
     onlyDeps         = fromFlag (installOnlyDeps          installFlags)
     allowNewer       = fromFlag (configAllowNewer         configExFlags)

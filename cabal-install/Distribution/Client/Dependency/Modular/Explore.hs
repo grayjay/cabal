@@ -3,6 +3,7 @@ module Distribution.Client.Dependency.Modular.Explore
     , backjumpAndExplore
     ) where
 
+import Control.Monad.State.Lazy
 import Data.Foldable as F
 import Data.Map as M
 
@@ -38,53 +39,118 @@ import qualified Distribution.Client.Dependency.Types as T
 -- If any of the children might contain a successful solution, we can
 -- return it immediately. If all children contain conflict sets, we can
 -- take the union as the combined conflict set.
-backjump :: F.Foldable t => Var QPN -> t (ConflictSetLog a) -> ConflictSetLog a
+--
+-- 'backjump' runs in the 'Explore' monad so that it can short-circuit
+-- the calculation of state during each backjump. Additionally, it uses
+-- the state to record the current best install plan each time it adds
+-- a backjump to the log.
+backjump :: F.Foldable t => Var QPN
+         -> t (Explore (ConflictSetLog a))
+         -> Explore (ConflictSetLog a)
 backjump var xs = F.foldr combine backjumpInfo xs M.empty
   where
-    combine :: ConflictSetLog a
-            -> (ConflictSet QPN -> ConflictSetLog a)
-            ->  ConflictSet QPN -> ConflictSetLog a
-    combine (T.Done x)    _ _               = T.Done x
-    combine (T.Fail cs)   f csAcc =
-      case M.lookup (simplifyVar var) cs of
-        Nothing                            -> backjumpInfo cs
-        Just ConflictLessThan              -> backjumpInfo (csAcc `unionCS` cs)
-        Just ConflictAll                   -> f (csAcc `unionCS` cs)
-    combine (T.Step m ms) f cs              = T.Step m (combine ms f cs)
+    combine :: Explore (ConflictSetLog a)
+            -> (ConflictSet QPN -> Explore (ConflictSetLog a))
+            ->  ConflictSet QPN -> Explore (ConflictSetLog a)
+    combine lg f csAcc = lg >>= \lg' ->
+        case lg' of
+          T.Done x    -> return $ T.Done x
+          T.Fail cs   ->
+              case M.lookup (simplifyVar var) cs of
+                Nothing               -> backjumpInfo cs
+                Just ConflictLessThan -> backjumpInfo (csAcc `unionCS` cs)
+                Just ConflictAll      -> f (csAcc `unionCS` cs)
+          T.Step m ms -> T.Step m `fmap` combine (return ms) f csAcc
 
 type ConflictSetLog = T.Progress Message (ConflictSet QPN)
 
--- | A tree traversal that simultaneously propagates conflict sets up
--- the tree from the leaves and creates a log.
-exploreLog :: Tree a b -> (Assignment -> ConflictSetLog (Assignment, RevDepMap, a))
-exploreLog = cata go
+-- | Record complete assignments on 'Done' nodes.
+assign :: Tree a b -> Tree (Assignment, a) b
+assign tree = cata go tree $ A M.empty M.empty M.empty
   where
-    go :: TreeF a b (Assignment -> ConflictSetLog (Assignment, RevDepMap, a))
-                 -> (Assignment -> ConflictSetLog (Assignment, RevDepMap, a))
-    go (FailF c fr)          _           = failWith (Failure c fr) c
-    go (DoneF rdm s)         a           = succeedWith Success (a, rdm, s)
-    go (PChoiceF qpn _     ts) (A pa fa sa)   =
-      backjump (P qpn) $                          -- try children in order,
-      W.mapWithKey                                -- when descending ...
-        (\ i@(POption k _) r -> tryWith (TryP qpn i) $ -- log and ...
-                    r (A (M.insert qpn k pa) fa sa)) -- record the pkg choice
-      ts
-    go (FChoiceF qfn _ _ _ ts) (A pa fa sa)   =
-      backjump (F qfn) $                          -- try children in order,
-      W.mapWithKey                                -- when descending ...
-        (\ k r -> tryWith (TryF qfn k) $          -- log and ...
-                    r (A pa (M.insert qfn k fa) sa)) -- record the pkg choice
-      ts
-    go (SChoiceF qsn _ _   ts) (A pa fa sa)   =
-      backjump (S qsn) $                          -- try children in order,
-      W.mapWithKey                                -- when descending ...
-        (\ k r -> tryWith (TryS qsn k) $          -- log and ...
-                    r (A pa fa (M.insert qsn k sa))) -- record the pkg choice
-      ts
-    go (GoalChoiceF        ts) a           =
+    go :: TreeF a b (Assignment -> Tree (Assignment, a) b)
+                 -> (Assignment -> Tree (Assignment, a) b)
+    go (FailF c fr)            _            = Fail c fr
+    go (DoneF rdm x)           a            = Done rdm (a, x)
+    go (PChoiceF qpn y     ts) (A pa fa sa) = PChoice qpn y     $ W.mapWithKey f ts
+        where f (POption k _) r = r (A (M.insert qpn k pa) fa sa)
+    go (FChoiceF qfn y t m ts) (A pa fa sa) = FChoice qfn y t m $ W.mapWithKey f ts
+        where f k             r = r (A pa (M.insert qfn k fa) sa)
+    go (SChoiceF qsn y t   ts) (A pa fa sa) = SChoice qsn y t   $ W.mapWithKey f ts
+        where f k             r = r (A pa fa (M.insert qsn k sa))
+    go (GoalChoiceF        ts) a            = GoalChoice $ fmap ($ a) ts
+
+type Explore = State ExploreState
+
+data ExploreState = ExploreState {
+      -- | The current best install plan.
+      esBestPlan :: Maybe Plan
+
+      -- | The current maximum score. It is equal to the minimum of the value
+      -- specified with --max-score and the score of the best install plan. If
+      -- neither of those two values exists, 'esMaxScore' is equal to 'Nothing'.
+    , esMaxScore :: Maybe T.InstallPlanScore
+    }
+
+-- | A tree traversal that simultaneously prunes nodes based on score,
+-- propagates conflict sets up the tree from the leaves, and creates a log.
+--
+-- The solver lowers the cutoff score as it finds better and better solutions.
+-- It interleaves pruning and backjumping because the two processes are
+-- interdependent. Backjumping allows the solver to calculate the current best
+-- score after visiting fewer of the preceding nodes. Pruning produces the
+-- conflict sets required for backjumping.
+explore :: Maybe T.InstallPlanScore
+        -> T.SolverExhaustiveness
+        -> Tree (Assignment, ScoringState) ScoringState
+        -> ConflictSetLog Plan
+explore maxScore exh = (`evalState` initES) . cata go
+  where
+    go :: TreeF (Assignment, ScoringState)
+                ScoringState
+                (Explore (ConflictSetLog Plan))
+       -> Explore (ConflictSetLog Plan)
+    go (FailF c fr)             = fail' c fr
+    go (DoneF rdm (a, ss))      =
+      maybePrune ss $ do
+          put ExploreState {
+                  esBestPlan = Just (a, rdm, ssTotalScore ss)
+                , esMaxScore = Just $ ssTotalScore ss
+                }
+          case exh of
+            T.FindFirstSolution -> return $
+                                   succeedWith Success (a, rdm, ssTotalScore ss)
+            T.FindBestSolution  -> fail' (ssConflictSet ss) $
+                                   SearchingForBetterScore (ssTotalScore ss)
+    go (PChoiceF qpn ss     ts) =
+      maybePrune ss $ backjump (P qpn) $
+      W.mapWithKey (\ k r -> tryWith (TryP qpn k) `fmap` r) ts
+    go (FChoiceF qfn ss _ _ ts) =
+      maybePrune ss $ backjump (F qfn) $
+      W.mapWithKey (\ k r -> tryWith (TryF qfn k) `fmap` r) ts
+    go (SChoiceF qsn ss _   ts) =
+      maybePrune ss $ backjump (S qsn) $
+      W.mapWithKey (\ k r -> tryWith (TryS qsn k) `fmap` r) ts
+    go (GoalChoiceF         ts) =
       P.casePSQ ts
-        (failWith (Failure M.empty EmptyGoalChoice) M.empty) -- empty goal choice is an internal error
-        (\ k v _xs -> continueWith (Next (close k)) (v a))   -- commit to the first goal choice
+        (fail' M.empty EmptyGoalChoice)                    -- empty goal choice is an internal error
+        (\ k v _xs -> continueWith (Next (close k)) `fmap` v) -- commit to the first goal choice
+
+    maybePrune :: ScoringState
+               -> Explore (ConflictSetLog a)
+               -> Explore (ConflictSetLog a)
+    maybePrune ss successLog = do
+      maxScore' <- gets esMaxScore
+      if maybe False (ssTotalScore ss >=) maxScore'
+        then let cs = ssConflictSet ss
+             in fail' cs $ ExceedsMaxScore (ssTotalScore ss)
+        else successLog
+
+    initES :: ExploreState
+    initES = ExploreState {
+                 esBestPlan = Nothing
+               , esMaxScore = maxScore
+               }
 
 -- | Add in information about pruned trees.
 --
@@ -92,12 +158,20 @@ exploreLog = cata go
 -- tree, but rather make assumptions about where that shape originated from. It'd be
 -- better if the pruning itself would leave information that we could pick up at this
 -- point.
-backjumpInfo :: ConflictSet QPN -> ConflictSetLog a
-backjumpInfo cs = failWith (Failure cs Backjump) cs
+backjumpInfo :: ConflictSet QPN -> Explore (ConflictSetLog a)
+backjumpInfo cs = fail' cs Backjump
+
+-- | Fail and record the current best install plan.
+fail' :: ConflictSet QPN -> FailReason -> Explore (ConflictSetLog a)
+fail' c fr = (\plan -> failWith (Failure c fr plan) c) `fmap` gets esBestPlan
 
 -- | Interface.
-backjumpAndExplore :: Tree a b -> Log Message (Assignment, RevDepMap, a)
-backjumpAndExplore t = toLog $ exploreLog t (A M.empty M.empty M.empty)
+backjumpAndExplore :: Maybe T.InstallPlanScore
+                   -> T.SolverExhaustiveness
+                   -> Tree ScoringState ScoringState
+                   -> Log Message Plan
+backjumpAndExplore maxScore exhaustiveness =
+    toLog . explore maxScore exhaustiveness . assign
   where
     toLog :: T.Progress step fail done -> Log step done
     toLog = T.foldProgress T.Step (const (T.Fail ())) T.Done

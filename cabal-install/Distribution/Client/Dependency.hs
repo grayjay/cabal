@@ -53,6 +53,7 @@ module Distribution.Client.Dependency (
     setStrongFlags,
     setMaxBackjumps,
     setMaxScore,
+    setExhaustiveness,
     addSourcePackages,
     hideInstalledPackagesSpecificByUnitId,
     hideInstalledPackagesSpecificBySourcePackageId,
@@ -78,6 +79,7 @@ import Distribution.Client.Dependency.Types
          , LabeledPackageConstraint(..), unlabelPackageConstraint
          , ConstraintSource(..), showConstraintSource
          , InstallPlanScore, defaultInstallPlanScore
+         , SolverExhaustiveness(FindFirstSolution)
          , AllowNewer(..), PackagePreferences(..), InstalledPreference(..)
          , PackagesPreferenceDefault(..)
          , Progress(..), foldProgress )
@@ -149,7 +151,8 @@ data DepResolverParams = DepResolverParams {
        depResolverShadowPkgs        :: Bool,
        depResolverStrongFlags       :: Bool,
        depResolverMaxBackjumps      :: Maybe Int,
-       depResolverMaxScore          :: Maybe InstallPlanScore
+       depResolverMaxScore          :: Maybe InstallPlanScore,
+       depResolverExhaustiveness    :: SolverExhaustiveness
      }
 
 showDepResolverParams :: DepResolverParams -> String
@@ -207,7 +210,8 @@ basicDepResolverParams installedPkgIndex sourcePkgIndex =
        depResolverShadowPkgs        = False,
        depResolverStrongFlags       = False,
        depResolverMaxBackjumps      = Nothing,
-       depResolverMaxScore          = Nothing
+       depResolverMaxScore          = Nothing,
+       depResolverExhaustiveness    = FindFirstSolution
      }
 
 addTargets :: [PackageName]
@@ -280,6 +284,12 @@ setMaxScore :: Maybe InstallPlanScore -> DepResolverParams -> DepResolverParams
 setMaxScore n params =
     params {
       depResolverMaxScore = n
+    }
+
+setExhaustiveness :: SolverExhaustiveness -> DepResolverParams -> DepResolverParams
+setExhaustiveness e params =
+    params {
+      depResolverExhaustiveness = e
     }
 
 -- | Some packages are specific to a given compiler version and should never be
@@ -560,7 +570,7 @@ resolveDependencies platform comp  solver params =
     Step (showDepResolverParams finalparams)
   $ fmap (uncurry $ validateSolverResult platform comp indGoals)
   $ runSolver solver (SolverConfig reorderGoals indGoals noReinstalls
-                      shadowing strFlags maxBkjumps maxScore)
+                      shadowing strFlags maxBkjumps maxScore exhaustiveness)
                      platform comp installedPkgIndex sourcePkgIndex
                      preferences constraints targets
   where
@@ -576,15 +586,16 @@ resolveDependencies platform comp  solver params =
       shadowing
       strFlags
       maxBkjumps
-      maxScore)       = dontUpgradeNonUpgradeablePackages
+      maxScore
+      exhaustiveness) = dontUpgradeNonUpgradeablePackages
                       -- TODO:
                       -- The modular solver can properly deal with broken
                       -- packages and won't select them. So the
                       -- 'hideBrokenInstalledPackages' function should be moved
                       -- into a module that is specific to the top-down solver.
-                      . (if solver /= Modular then hideBrokenInstalledPackages
-                                              else id)
-                      $ params
+                        . (if solver /= Modular then hideBrokenInstalledPackages
+                                                else id)
+                        $ params
 
     preferences = interpretPackagesPreference
                     (Set.fromList targets) defpref prefs
@@ -803,7 +814,8 @@ resolveWithoutDependencies :: DepResolverParams
 resolveWithoutDependencies (DepResolverParams targets constraints
                               prefs defpref installedPkgIndex sourcePkgIndex
                               _reorderGoals _indGoals _avoidReinstalls
-                              _shadowing _strFlags _maxBjumps _maxScore) =
+                              _shadowing _strFlags _maxBjumps _maxScore
+                              _exhaustiveness) =
     collectEithers (map selectPackage targets)
   where
     selectPackage :: PackageName -> Either ResolveNoDepsError SourcePackage
