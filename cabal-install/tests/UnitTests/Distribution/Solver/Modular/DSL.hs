@@ -413,12 +413,13 @@ exResolve :: ExampleDb
           -> Maybe Int
           -> IndependentGoals
           -> ReorderGoals
+          -> FindBestSolution
           -> EnableBackjumping
           -> Maybe [ExampleVar]
           -> [ExPreference]
           -> ([String], Either String CI.InstallPlan.SolverInstallPlan)
 exResolve db exts langs pkgConfigDb targets solver mbj indepGoals reorder
-          enableBj vars prefs
+          findBest enableBj vars prefs
     = runProgress $ resolveDependencies C.buildPlatform
                         compiler pkgConfigDb
                         solver
@@ -443,6 +444,7 @@ exResolve db exts langs pkgConfigDb targets solver mbj indepGoals reorder
                    $ setIndependentGoals indepGoals
                    $ setReorderGoals reorder
                    $ setMaxBackjumps mbj
+                   $ setFindBestSolution findBest
                    $ setEnableBackjumping enableBj
                    $ setGoalOrder goalOrder
                    $ standardInstallPolicy instIdx avaiIdx targets'
@@ -473,9 +475,11 @@ exResolve db exts langs pkgConfigDb targets solver mbj indepGoals reorder
                IndepSetup x p -> P.PackagePath (P.Independent x) (P.Setup (C.PackageName p))
 
 extractInstallPlan :: CI.InstallPlan.SolverInstallPlan
-                   -> [(ExamplePkgName, ExamplePkgVersion)]
-extractInstallPlan = catMaybes . map confPkg . CI.InstallPlan.toList
+                   -> ([(ExamplePkgName, ExamplePkgVersion)], InstallPlanScore)
+extractInstallPlan plan = (pkgs, CI.InstallPlan.planScore plan)
   where
+    pkgs = catMaybes . map confPkg $ CI.InstallPlan.toList plan
+
     confPkg :: CI.InstallPlan.SolverPlanPackage -> Maybe (String, Int)
     confPkg (CI.InstallPlan.Configured pkg) = Just $ srcPkg pkg
     confPkg _                               = Nothing

@@ -271,11 +271,13 @@ runTest SolverTest{..} = askOption $ \(OptionShowSolverLog showSolverLog) ->
       let (_msgs, result) = exResolve testDb testSupportedExts
                             testSupportedLangs testPkgConfigDb testTargets
                             Modular Nothing testIndepGoals (ReorderGoals False)
-                            (EnableBackjumping True) testGoalOrder testSoftConstraints
+                            (FindBestSolution False) (EnableBackjumping True)
+                            testGoalOrder testSoftConstraints
       when showSolverLog $ mapM_ putStrLn _msgs
       case result of
         Left  err  -> assertBool ("Unexpected error:\n" ++ err) (check testResult err)
-        Right plan -> assertEqual "" (toMaybe testResult) (Just (extractInstallPlan plan))
+        Right plan -> assertEqual "" (toMaybe testResult)
+                                     (Just $ fst (extractInstallPlan plan))
   where
     toMaybe :: SolverResult -> Maybe ([(String, Int)])
     toMaybe (SolverSuccess plan) = Just plan
