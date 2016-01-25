@@ -54,6 +54,7 @@ module Distribution.Client.Dependency (
     setSolveExecutables,
     setGoalOrder,
     setMaxScore,
+    setFindBestSolution,
     removeLowerBounds,
     removeUpperBounds,
     addDefaultSetupDependencies,
@@ -168,7 +169,8 @@ data DepResolverParams = DepResolverParams {
 
        -- | Function to override the solver's goal-ordering heuristics.
        depResolverGoalOrder         :: Maybe (Variable QPN -> Variable QPN -> Ordering),
-       depResolverMaxScore          :: Maybe InstallPlanScore
+       depResolverMaxScore          :: Maybe InstallPlanScore,
+       depResolverFindBestSolution  :: FindBestSolution
      }
 
 showDepResolverParams :: DepResolverParams -> String
@@ -245,7 +247,8 @@ basicDepResolverParams installedPkgIndex sourcePkgIndex =
        depResolverEnableBackjumping = EnableBackjumping True,
        depResolverSolveExecutables  = SolveExecutables True,
        depResolverGoalOrder         = Nothing,
-       depResolverMaxScore          = Nothing
+       depResolverMaxScore          = Nothing,
+       depResolverFindBestSolution  = FindBestSolution False
      }
 
 addTargets :: [PackageName]
@@ -344,6 +347,12 @@ setMaxScore :: Maybe InstallPlanScore -> DepResolverParams -> DepResolverParams
 setMaxScore n params =
     params {
       depResolverMaxScore = n
+    }
+
+setFindBestSolution :: FindBestSolution -> DepResolverParams -> DepResolverParams
+setFindBestSolution findBest params =
+    params {
+      depResolverFindBestSolution = findBest
     }
 
 -- | Some packages are specific to a given compiler version and should never be
@@ -632,7 +641,7 @@ resolveDependencies platform comp pkgConfigDB solver params =
   $ fmap (uncurry $ validateSolverResult platform comp indGoals)
   $ runSolver solver (SolverConfig reordGoals cntConflicts indGoals noReinstalls
                       shadowing strFlags maxBkjumps enableBj solveExes order
-                      mScore)
+                      mScore findBest)
                      platform comp installedPkgIndex sourcePkgIndex
                      pkgConfigDB preferences constraints targets
   where
@@ -652,7 +661,8 @@ resolveDependencies platform comp pkgConfigDB solver params =
       enableBj
       solveExes
       order
-      mScore) = dontUpgradeNonUpgradeablePackages params
+      mScore
+      findBest) = dontUpgradeNonUpgradeablePackages params
 
     preferences = interpretPackagesPreference targets defpref prefs
 
@@ -879,7 +889,7 @@ resolveWithoutDependencies (DepResolverParams targets constraints
                               prefs defpref installedPkgIndex sourcePkgIndex
                               _reorderGoals _countConflicts _indGoals _avoidReinstalls
                               _shadowing _strFlags _maxBjumps _enableBj _solveExes _order
-                              _maxScore) =
+                              _maxScore _findBest) =
     collectEithers $ map selectPackage (Set.toList targets)
   where
     selectPackage :: PackageName -> Either ResolveNoDepsError UnresolvedSourcePackage
