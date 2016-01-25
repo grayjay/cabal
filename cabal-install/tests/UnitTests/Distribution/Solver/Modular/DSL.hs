@@ -416,12 +416,13 @@ exResolve :: ExampleDb
           -> Maybe Int
           -> IndependentGoals
           -> ReorderGoals
+          -> FindBestSolution
           -> EnableBackjumping
           -> Maybe [ExampleVar]
           -> [ExPreference]
           -> Progress String String CI.SolverInstallPlan.SolverInstallPlan
 exResolve db exts langs pkgConfigDb targets solver mbj indepGoals reorder
-          enableBj vars prefs
+          findBest enableBj vars prefs
     = resolveDependencies C.buildPlatform compiler pkgConfigDb solver params
   where
     defaultCompiler = C.unknownCompilerInfo C.buildCompilerId C.NoAbiTag
@@ -443,6 +444,7 @@ exResolve db exts langs pkgConfigDb targets solver mbj indepGoals reorder
                    $ setIndependentGoals indepGoals
                    $ setReorderGoals reorder
                    $ setMaxBackjumps mbj
+                   $ setFindBestSolution findBest
                    $ setEnableBackjumping enableBj
                    $ setGoalOrder goalOrder
                    $ standardInstallPolicy instIdx avaiIdx targets'
@@ -473,12 +475,14 @@ exResolve db exts langs pkgConfigDb targets solver mbj indepGoals reorder
                IndepSetup x p -> P.PackagePath (P.Independent x) (P.Setup (C.PackageName p))
 
 extractInstallPlan :: CI.SolverInstallPlan.SolverInstallPlan
-                   -> [(ExamplePkgName, ExamplePkgVersion)]
-extractInstallPlan = catMaybes . map confPkg . CI.SolverInstallPlan.toList
+                   -> ([(ExamplePkgName, ExamplePkgVersion)], InstallPlanScore)
+extractInstallPlan plan = (pkgs, CI.SolverInstallPlan.planScore plan)
   where
+    pkgs = catMaybes . map confPkg $ CI.SolverInstallPlan.toList plan
+
     confPkg :: CI.SolverInstallPlan.SolverPlanPackage -> Maybe (String, Int)
     confPkg (CI.SolverInstallPlan.Configured pkg) = Just $ srcPkg pkg
-    confPkg _                               = Nothing
+    confPkg _                                     = Nothing
 
     srcPkg :: SolverPackage UnresolvedPkgLoc -> (String, Int)
     srcPkg cpkg =
