@@ -35,7 +35,8 @@ data SolverConfig = SolverConfig {
   strongFlags           :: StrongFlags,
   maxBackjumps          :: Maybe Int,
   enableBackjumping     :: EnableBackjumping,
-  maxInstallPlanScore   :: Maybe InstallPlanScore
+  maxInstallPlanScore   :: Maybe InstallPlanScore,
+  findBestSolution      :: FindBestSolution
 }
 
 -- | Run all solver phases.
@@ -74,7 +75,7 @@ solve :: SolverConfig ->                      -- ^ solver parameters
 solve sc cinfo idx pkgConfigDB userPrefs userConstraints userGoals =
   explorePhase     $
   detectCyclesPhase$
-  maxScorePhase    $
+  scorePhase       $
   heuristicsPhase  $
   preferencesPhase $
   validationPhase  $
@@ -82,7 +83,9 @@ solve sc cinfo idx pkgConfigDB userPrefs userConstraints userGoals =
   buildPhase
   where
     explorePhase     = backjumpAndExplore (enableBackjumping sc)
-    maxScorePhase    = P.pruneWithMaxScore (maxInstallPlanScore sc) -- must come after all preferences
+                                          (maxInstallPlanScore sc)
+                                          (findBestSolution sc)
+    scorePhase       = P.scoreTree -- must come after all preferences
     heuristicsPhase  = (if asBool (preferEasyGoalChoices sc)
                          then P.preferEasyGoalChoices -- also leaves just one choice
                          else P.firstGoal) . -- after doing goal-choice heuristics, commit to the first choice (saves space)

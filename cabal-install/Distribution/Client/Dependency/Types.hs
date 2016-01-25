@@ -18,6 +18,7 @@ module Distribution.Client.Dependency.Types (
     PreSolver(..),
     Solver(..),
 
+    FindBestSolution(..),
     ReorderGoals(..),
     IndependentGoals(..),
     AvoidReinstalls(..),
@@ -119,6 +120,9 @@ instance Text PreSolver where
       "choose"  -> return Choose
       _         -> Parse.pfail
 
+newtype FindBestSolution = FindBestSolution Bool
+  deriving (BooleanFlag, Eq, Generic, Show)
+
 newtype ReorderGoals = ReorderGoals Bool
   deriving (BooleanFlag, Eq, Generic, Show)
 
@@ -137,6 +141,7 @@ newtype StrongFlags = StrongFlags Bool
 newtype EnableBackjumping = EnableBackjumping Bool
   deriving (BooleanFlag, Eq, Generic, Show)
 
+instance Binary FindBestSolution
 instance Binary ReorderGoals
 instance Binary IndependentGoals
 instance Binary AvoidReinstalls

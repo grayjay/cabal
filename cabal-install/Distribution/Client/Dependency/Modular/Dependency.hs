@@ -9,6 +9,8 @@ module Distribution.Client.Dependency.Modular.Dependency (
   , ConflictSet
   , CS.ConflictType(..)
   , CS.showCS
+    -- * Install plan scoring
+  , ScoringState(..)
     -- * Constrained instances
   , CI(..)
   , merge
@@ -49,6 +51,7 @@ import Language.Haskell.Extension (Extension(..), Language(..))
 import Distribution.Text
 
 import Distribution.Client.Dependency.Modular.ConflictSet (ConflictSet)
+import Distribution.Client.Dependency.Types
 import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.Var
@@ -56,6 +59,20 @@ import Distribution.Client.Dependency.Modular.Version
 import qualified Distribution.Client.Dependency.Modular.ConflictSet as CS
 
 import Distribution.Client.ComponentDeps (Component(..))
+
+{-------------------------------------------------------------------------------
+  Install plan scoring
+-------------------------------------------------------------------------------}
+
+-- | State used for finding solutions based on score. Storing 'ScoringState' on
+-- nodes allows the nodes to be scored before the cutoff score is known.
+data ScoringState = ScoringState {
+      -- | The sum of the scores of all nodes from the root to the current node.
+      ssTotalScore  :: InstallPlanScore
+
+      -- | The conflict set that should be used if a node exceeds the max score.
+    , ssConflictSet :: ConflictSet QPN
+    }
 
 {-------------------------------------------------------------------------------
   Constrained instances

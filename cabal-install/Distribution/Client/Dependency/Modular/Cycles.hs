@@ -14,11 +14,11 @@ import Distribution.Client.Dependency.Modular.Tree
 import qualified Distribution.Client.Dependency.Modular.ConflictSet as CS
 
 -- | Find and reject any solutions that are cyclic
-detectCyclesPhase :: Tree a QGoalReason -> Tree a QGoalReason
+detectCyclesPhase :: Tree a b -> Tree a b
 detectCyclesPhase = cata go
   where
     -- The only node of interest is DoneF
-    go :: TreeF a QGoalReason (Tree a QGoalReason) -> Tree a QGoalReason
+    go :: TreeF a b (Tree a b) -> Tree a b
     go (PChoiceF qpn gr     cs) = PChoice qpn gr     cs
     go (FChoiceF qfn gr w m cs) = FChoice qfn gr w m cs
     go (SChoiceF qsn gr w   cs) = SChoice qsn gr w   cs
