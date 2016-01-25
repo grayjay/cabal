@@ -378,6 +378,8 @@ planPackages comp platform mSandboxPkgInfo solver
 
       . setMaxScore maxScore
 
+      . setFindBestSolution findBest
+
       . setIndependentGoals independentGoals
 
       . setReorderGoals reorderGoals
@@ -440,6 +442,7 @@ planPackages comp platform mSandboxPkgInfo solver
     strongFlags      = fromFlag (installStrongFlags       installFlags)
     maxBackjumps     = fromFlag (installMaxBackjumps      installFlags)
     maxScore         = flagToMaybe (installMaxScore       installFlags)
+    findBest         = fromFlag (installFindBestSolution  installFlags)
     upgradeDeps      = fromFlag (installUpgradeDeps       installFlags)
     onlyDeps         = fromFlag (installOnlyDeps          installFlags)
     allowNewer       = fromMaybe AllowNewerNone (configAllowNewer configFlags)
