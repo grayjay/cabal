@@ -280,14 +280,16 @@ runTest SolverTest{..} = askOption $ \(OptionShowSolverLog showSolverLog) ->
       let lg = exResolve testDb testSupportedExts
                testSupportedLangs testPkgConfigDb testTargets
                Modular Nothing testIndepGoals (ReorderGoals False)
-               (EnableBackjumping True) testGoalOrder testSoftConstraints
+               (FindBestSolution False) (EnableBackjumping True) testGoalOrder
+               testSoftConstraints
           logMsg msg = if showSolverLog
                        then putStrLn msg
                        else return ()
       result <- foldProgress ((>>) . logMsg) (return . Left) (return . Right) lg
       case result of
         Left  err  -> assertBool ("Unexpected error:\n" ++ err) (check testResult err)
-        Right plan -> assertEqual "" (toMaybe testResult) (Just (extractInstallPlan plan))
+        Right plan -> assertEqual "" (toMaybe testResult)
+                                     (Just $ fst (extractInstallPlan plan))
   where
     toMaybe :: SolverResult -> Maybe ([(String, Int)])
     toMaybe (SolverSuccess plan) = Just plan

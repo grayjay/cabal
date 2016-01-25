@@ -517,6 +517,7 @@ Test-Suite solver-quickcheck
         random,
         hackage-security,
         tasty,
+        tasty-expected-failure,
         tasty-quickcheck,
         QuickCheck >= 2.8.2,
         pretty-show
