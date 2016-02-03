@@ -1,0 +1,12 @@
+branches:
+  only:
+    - appveyor
+
+before_build:
+  - choco install ghc -version 7.6.3
+
+build_script:
+  - cd Cabal
+  - ghc --make -threaded -i -i. Setup.hs
+  - Setup configure
+  - Setup build
