@@ -2,8 +2,9 @@ branches:
   only:
     - appveyor
 
-before_build:
+install:
   - choco install ghc -version 7.6.3
+  - SET PATH=%PATH%;C:\tools\ghc\ghc-7.6.3\bin
 
 build_script:
   - cd Cabal
