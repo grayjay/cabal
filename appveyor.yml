@@ -9,6 +9,7 @@ install:
   - 7z x cabal.tar.gz
   - 7z x cabal.tar
   - ren cabal*.exe cabal.exe
+  - curl -X GET http://hackage.haskell.org/packages/archive/00-index.tar.gz -v3 -L -o 00-index.tar.gz
   - cabal update -v3
 
 build_script:
