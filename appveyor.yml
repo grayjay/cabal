@@ -5,9 +5,16 @@ branches:
 install:
   - choco install ghc -version 7.6.3
   - SET PATH=%PATH%;C:\tools\ghc\ghc-7.6.3\bin
+  - curl -o cabal.tar.gz https://www.haskell.org/cabal/release/cabal-install-1.22.0.0/cabal-1.22.0.0-i386-unknown-mingw32.tar.gz
+  - 7z x cabal.tar.gz
+  - 7z x cabal.tar
+  - ren cabal*.exe cabal.exe
+  - cabal update
 
 build_script:
   - cd Cabal
   - ghc --make -threaded -i -i. Setup.hs
-  - Setup configure
+  - ..\cabal install --only-dependencies --enable-tests
+  - Setup configure --ghc-option=-Werror --enable-tests
   - Setup build
+  - Setup test --show-details=streaming
