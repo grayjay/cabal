@@ -7,19 +7,19 @@ install:
   - dir C:\"Program Files"\"Haskell Platform"\2014.2.0.0\bin
   - SET PATH=C:\Program Files\Haskell Platform\2014.2.0.0\bin;C:\Program Files\Haskell Platform\2014.2.0.0\mingw\bin;C:\Program Files\Haskell Platform\2014.2.0.0\lib\extralibs\bin;%PATH%
   - echo %PATH%
-  - cabal update -v3
+  - cabal update
 
 build_script:
   - cd Cabal
   - ghc --make -threaded -i -i. Setup.hs
-  - cabal install --only-dependencies --enable-tests -v3
-  - Setup configure --ghc-option=-Werror --enable-tests
+  - cabal install --only-dependencies --enable-tests
+  - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
   - Setup test --show-details=streaming
   - Setup install
   - cd ..\cabal-install
   - ghc --make -threaded -i -i. Setup.hs
   - cabal install --only-dependencies --enable-tests
-  - Setup configure --ghc-option=-Werror --enable-tests
+  - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
   - Setup test --show-details=streaming
