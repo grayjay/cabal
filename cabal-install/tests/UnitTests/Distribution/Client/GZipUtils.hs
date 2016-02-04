@@ -45,12 +45,12 @@ maybeDecompressUnitTest =
     runBrokenStream = try . void . evaluate . BSLL.length $ maybeDecompress (BSLL.init compressedZlib <> BSLL.pack "*")
 
 prop_maybeDecompress_zlib :: [Word8] -> Property
-prop_maybeDecompress_zlib ws = property $ maybeDecompress compressedZlib == original
+prop_maybeDecompress_zlib ws = property $ maybeDecompress compressedZlib === original
   where original = BSL.pack ws
         compressedZlib = Zlib.compress original
 
 prop_maybeDecompress_gzip :: [Word8] -> Property
-prop_maybeDecompress_gzip ws = property $ maybeDecompress compressedGZip == original
+prop_maybeDecompress_gzip ws = property $ maybeDecompress compressedGZip === original
   where original = BSL.pack ws
         compressedGZip = GZip.compress original
 
