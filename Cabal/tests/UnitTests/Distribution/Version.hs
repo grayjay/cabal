@@ -660,36 +660,36 @@ prop_parse_disp2 vr =
   let b = fmap (display :: VersionRange -> String) (simpleParse (display vr))
       a = Just (display vr)
   in
-   counterexample ("Expected: " ++ show a) $
-   counterexample ("But got: " ++ show b) $
-   b == a
+   -- counterexample ("Expected: " ++ show a) $
+   -- counterexample ("But got: " ++ show b) $
+   property $ b == a
 
 prop_parse_disp3 :: VersionRange -> Property
 prop_parse_disp3 vr =
   let a = Just (display vr)
       b = fmap displayRaw (simpleParse (display vr))
   in
-   counterexample ("Expected: " ++ show a) $
-   counterexample ("But got: " ++ show b) $
-   b == a
+   -- counterexample ("Expected: " ++ show a) $
+   -- counterexample ("But got: " ++ show b) $
+   property $ b == a
 
 prop_parse_disp4 :: VersionRange -> Property
 prop_parse_disp4 vr =
   let a = Just vr
       b = (simpleParse (display vr))
   in
-   counterexample ("Expected: " ++ show a) $
-   counterexample ("But got: " ++ show b) $
-   b == a
+   -- counterexample ("Expected: " ++ show a) $
+   -- counterexample ("But got: " ++ show b) $
+   property $ b == a
 
 prop_parse_disp5 :: VersionRange -> Property
 prop_parse_disp5 vr =
   let a = Just vr
       b = simpleParse (displayRaw vr)
   in
-   counterexample ("Expected: " ++ show a) $
-   counterexample ("But got: " ++ show b) $
-   b == a
+   -- counterexample ("Expected: " ++ show a) $
+   -- counterexample ("But got: " ++ show b) $
+   property $ b == a
 
 displayRaw :: VersionRange -> String
 displayRaw =

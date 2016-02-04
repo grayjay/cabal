@@ -4,9 +4,7 @@ branches:
 
 install:
   - choco install HaskellPlatform -version 2014.2.0.0
-  - dir C:\"Program Files"\"Haskell Platform"\2014.2.0.0\bin
   - SET PATH=C:\Program Files\Haskell Platform\2014.2.0.0\bin;C:\Program Files\Haskell Platform\2014.2.0.0\mingw\bin;C:\Program Files\Haskell Platform\2014.2.0.0\lib\extralibs\bin;%PATH%
-  - echo %PATH%
   - cabal update
 
 build_script:
