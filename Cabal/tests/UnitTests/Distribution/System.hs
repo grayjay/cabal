@@ -10,7 +10,7 @@ import Test.Tasty
 import Test.Tasty.QuickCheck
 
 textRoundtrip :: (Arbitrary a, Show a, Eq a, Text a) => a -> Property
-textRoundtrip x = property $ simpleParse (display x) == Just x
+textRoundtrip x = simpleParse (display x) === Just x
 
 tests :: [TestTree]
 tests =
