@@ -13,7 +13,7 @@ build_script:
   - cabal install --only-dependencies --enable-tests
   - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
-  - Setup test --show-details=streaming
+  - Setup test unit-tests --show-details=streaming
   - Setup install
   - cd ..\cabal-install
   - ghc --make -threaded -i -i. Setup.hs
