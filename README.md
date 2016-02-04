@@ -1,4 +1,4 @@
-# Cabal [![Build Status](https://secure.travis-ci.org/haskell/cabal.svg?branch=master)](http://travis-ci.org/haskell/cabal)
+# Cabal [![Build Status](https://secure.travis-ci.org/haskell/cabal.svg?branch=master)](http://travis-ci.org/haskell/cabal) [![Build status](https://ci.appveyor.com/api/projects/status/ks7t5oisl1ikifuy/branch/appveyor?svg=true)](https://ci.appveyor.com/project/grayjay/cabal/branch/appveyor)
 
 This Cabal Git repository contains the following packages:
 
