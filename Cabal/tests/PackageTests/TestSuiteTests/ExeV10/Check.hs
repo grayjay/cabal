@@ -68,8 +68,13 @@ hpcTestMatrix :: SuiteConfig -> [TestTree]
 hpcTestMatrix config = do
     libProf <- [True, False]
     exeProf <- [True, False]
+#if mingw32_HOST_OS && __GLASGOW_HASKELL__ >= 708
+    exeDyn <- [False]
+    shared <- [False]
+#else
     exeDyn <- [True, False]
     shared <- [True, False]
+#endif
     let name | null suffixes = "Vanilla"
              | otherwise = intercalate "-" suffixes
           where

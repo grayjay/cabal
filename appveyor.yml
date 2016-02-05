@@ -1,0 +1,26 @@
+install:
+  - choco install ghc -version 7.10.3
+  - SET PATH=%PATH%;C:\tools\ghc\ghc-7.10.3\bin
+  - curl -o cabal.7z http://wordroute.com/grayjay/cabal.7z
+  - 7z x cabal.7z
+  - SET CABAL=%CD%\cabal
+  - "\"%CABAL%\" update"
+
+build_script:
+  - cd Cabal
+  - ghc --make -threaded -i -i. Setup.hs -Wall -Werror
+
+  # 'echo "" |' works around an AppVeyor issue
+  # https://github.com/commercialhaskell/stack/issues/1097#issuecomment-145747849
+  - echo "" | "%CABAL%" install --only-dependencies --enable-tests
+
+  - Setup configure --user --ghc-option=-Werror --enable-tests
+  - Setup build
+  - Setup test --show-details=streaming
+  - Setup install
+  - cd ..\cabal-install
+  - ghc --make -threaded -i -i. Setup.hs -Wall -Werror
+  - echo "" | "%CABAL%" install --only-dependencies --enable-tests
+  - Setup configure --user --ghc-option=-Werror --enable-tests
+  - Setup build
+  - Setup test --show-details=streaming

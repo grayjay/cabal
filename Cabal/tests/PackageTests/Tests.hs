@@ -155,9 +155,11 @@ tests config =
   -- (Cabal has to build the non-profiled version first)
   , tc "TemplateHaskell/profiling" $ cabal_build ["--enable-library-profiling", "--enable-profiling"]
 
+#if !mingw32_HOST_OS || __GLASGOW_HASKELL__ < 708
   -- Test building a dynamic library/executable which uses Template
   -- Haskell
   , tc "TemplateHaskell/dynamic" $ cabal_build ["--enable-shared", "--enable-executable-dynamic"]
+#endif
 
   -- Test building an executable whose main() function is defined in a C
   -- file
