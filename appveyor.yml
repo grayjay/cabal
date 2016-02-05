@@ -4,7 +4,7 @@ install:
   - curl -o cabal.7z http://wordroute.com/grayjay/cabal.7z
   - 7z x cabal.7z
   - SET CABAL=%CD%\cabal
-  - "%CABAL%" update
+  - "\"%CABAL%\" update"
 
 build_script:
   - cd Cabal
