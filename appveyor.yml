@@ -3,19 +3,20 @@ install:
   - SET PATH=%PATH%;C:\tools\ghc\ghc-7.10.3\bin
   - curl -o cabal.7z http://wordroute.com/grayjay/cabal.7z
   - 7z x cabal.7z
-  - cabal update
+  - SET CABAL=%CD%\cabal
+  - "%CABAL%" update
 
 build_script:
   - cd Cabal
-  - ghc --make -threaded -i -i. Setup.hs
-  - echo "" | ..\cabal install --only-dependencies --enable-tests
+  - ghc --make -threaded -i -i. Setup.hs -Wall -Werror
+  - echo "" | "%CABAL%" install --only-dependencies --enable-tests
   - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
-  - Setup test unit-tests --show-details=streaming
+  - Setup test --show-details=streaming
   - Setup install
   - cd ..\cabal-install
-  - ghc --make -threaded -i -i. Setup.hs
-  - echo "" | ..\cabal install --only-dependencies --enable-tests
+  - ghc --make -threaded -i -i. Setup.hs -Wall -Werror
+  - echo "" | "%CABAL%" install --only-dependencies --enable-tests
   - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
   - Setup test --show-details=streaming
