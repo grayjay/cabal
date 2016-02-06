@@ -16,7 +16,7 @@ build_script:
   - ghc --make -threaded -i -i. Setup.hs
   - cabal sandbox init
   - cabal sandbox add-source ..\Cabal
-  - echo "" | cabal install --only-dependencies --enable-tests
+  - echo "" | cabal install --only-dependencies --enable-tests --force-reinstalls
   - Setup configure --package-db=.cabal-sandbox\x86_64-windows-ghc-7.8.3-packages.conf.d --ghc-option=-Werror --enable-tests
   - Setup build
   - Setup test --show-details=streaming
