@@ -1,10 +1,7 @@
 install:
   - choco install HaskellPlatform -version 2014.2.0.0
-  - SET PATH=%APPDATA%\cabal\bin;C:\Program Files\Haskell Platform\2014.2.0.0\bin;C:\Program Files\Haskell Platform\2014.2.0.0\mingw\bin;C:\Program Files\Haskell Platform\2014.2.0.0\lib\extralibs\bin;%PATH%
+  - SET PATH=C:\Program Files\Haskell Platform\2014.2.0.0\bin;C:\Program Files\Haskell Platform\2014.2.0.0\mingw\bin;C:\Program Files\Haskell Platform\2014.2.0.0\lib\extralibs\bin;%PATH%
   - cabal update
-  - cabal --version
-  - cabal install cabal-install
-  - cabal --version
 
 build_script:
   - cd Cabal
