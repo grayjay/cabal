@@ -1,20 +1,23 @@
 install:
   - choco install ghc -version 7.10.3
-  - SET PATH=%PATH%;C:\tools\ghc\ghc-7.10.3\bin
+  - SET PATH=%APPDATA%\cabal\bin;C:\tools\ghc\ghc-7.10.3\bin;%PATH%
   - curl -o cabal.exe https://www.haskell.org/cabal/release/cabal-install-1.18.0.3/cabal.exe
   - cabal update -v3
+  - cabal --version
+  - cabal install cabal-install
+  - cabal --version
 
 build_script:
   - cd Cabal
   - ghc --make -threaded -i -i. Setup.hs
-  - ..\cabal install --only-dependencies --enable-tests
+  - echo "" | cabal install --only-dependencies --enable-tests
   - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
   - Setup test --show-details=streaming
   - Setup install
   - cd ..\cabal-install
   - ghc --make -threaded -i -i. Setup.hs
-  - ..\cabal install --only-dependencies --enable-tests
+  - echo "" | cabal install --only-dependencies --enable-tests
   - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
   - Setup test --show-details=streaming
