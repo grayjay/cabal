@@ -1,10 +1,7 @@
 install:
   - choco install ghc -version 7.10.3
   - SET PATH=%PATH%;C:\tools\ghc\ghc-7.10.3\bin
-  - curl -o cabal.tar.gz https://www.haskell.org/cabal/release/cabal-install-1.20.0.3/cabal-1.20.0.3-i386-unknown-mingw32.tar.gz
-  - 7z x cabal.tar.gz
-  - 7z x cabal.tar
-  - ren cabal*.exe cabal.exe
+  - curl -o cabal.exe https://www.haskell.org/cabal/release/cabal-install-1.18.0.3/cabal.exe
   - cabal update -v3
 
 build_script:
