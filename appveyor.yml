@@ -1,26 +1,22 @@
 install:
-  - choco install ghc -version 7.10.3
-  - SET PATH=%APPDATA%\cabal\bin;C:\tools\ghc\ghc-7.10.3\bin;%PATH%
-  - curl -o cabal.exe https://www.haskell.org/cabal/release/cabal-install-1.18.0.3/cabal.exe
-  - cabal update -v3
-  - del cabal.exe
-  - curl -o cabal.tar.gz https://www.haskell.org/cabal/release/cabal-install-1.22.0.0/cabal-1.22.0.0-i386-unknown-mingw32.tar.gz
-  - 7z x cabal.tar.gz
-  - 7z x cabal.tar
-  - ren cabal*.exe cabal.exe
-  - cabal --version
+  - choco install HaskellPlatform -version 2014.2.0.0
+  - SET PATH=C:\Program Files\Haskell Platform\2014.2.0.0\bin;C:\Program Files\Haskell Platform\2014.2.0.0\mingw\bin;C:\Program Files\Haskell Platform\2014.2.0.0\lib\extralibs\bin;%PATH%
+  - cabal update
 
 build_script:
   - cd Cabal
-  - ghc --make -threaded -i -i. Setup.hs
-  - echo "" | ..\cabal install --only-dependencies --enable-tests
+  - ghc --make -threaded -i -i. Setup.hs -Wall -Werror
+
+  # 'echo "" |' works around an AppVeyor issue:
+  # https://github.com/commercialhaskell/stack/issues/1097#issuecomment-145747849
+  - echo "" | cabal install --only-dependencies --enable-tests Cabal.cabal ../cabal-install/cabal-install.cabal
+
   - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
-  - Setup test --show-details=streaming
+  - Setup test unit-tests --show-details=streaming
   - Setup install
   - cd ..\cabal-install
-  - ghc --make -threaded -i -i. Setup.hs
-  - echo "" | ..\cabal install --only-dependencies --enable-tests
+  - ghc --make -threaded -i -i. Setup.hs -Wall -Werror
   - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
-  - Setup test --show-details=streaming
+  # - Setup test unit-tests --show-details=streaming
