@@ -1,3 +1,3 @@
 . ../common.sh
-cabal configure > /dev/null
+cabal configure
 cabal exec echo this string

@@ -1,10 +1,10 @@
 . ../common.sh
 
-cabal sandbox delete > /dev/null
+cabal sandbox delete
 cabal exec my-executable && die "Unexpectedly found executable"
 
-cabal sandbox init > /dev/null
-cabal install > /dev/null
+cabal sandbox init
+cabal install
 
 # The library should not be available outside the sandbox
 $GHC_PKG list | grep -v "my-0.1"
