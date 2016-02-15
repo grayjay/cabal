@@ -559,3 +559,4 @@ withFileMonitor action = do
     finally (action (RootPath root) monitor) $ do
       exists <- doesFileExist monitorFile
       when exists $ removeFile monitorFile
+      threadDelay 5000

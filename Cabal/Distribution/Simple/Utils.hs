@@ -167,6 +167,7 @@ import qualified Paths_Cabal (version)
 
 import Control.Monad
     ( when, unless, filterM )
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar
     ( newEmptyMVar, putMVar, takeMVar )
 import Data.Bits
@@ -1158,6 +1159,7 @@ writeFileAtomic targetPath content = do
     (\(tmpPath, handle) -> do
         BS.hPut handle content
         hClose handle
+        threadDelay 5000
         renameFile tmpPath targetPath)
 
 -- | Write a file but only if it would have new content. If we would be writing
