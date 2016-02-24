@@ -14,6 +14,7 @@ build_script:
 
   # 'echo "" |' works around an AppVeyor issue:
   # https://github.com/commercialhaskell/stack/issues/1097#issuecomment-145747849
+  - "\"%CABAL%\" --version"
   - echo "" | "%CABAL%" install --only-dependencies --enable-tests
 
   - Setup configure --user --ghc-option=-Werror --enable-tests
