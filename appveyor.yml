@@ -1,9 +1,8 @@
 install:
   - choco install ghc -version 7.10.3
   - SET PATH=%PATH%;C:\tools\ghc\ghc-7.10.3\bin
-  - curl -o cabal.tar.gz https://www.haskell.org/cabal/release/cabal-install-1.24.0.0-rc1/cabal-install-1.24.0.0-rc1-i386-unknown-mingw32.tar.gz
-  - 7z x cabal.tar.gz
-  - 7z x cabal.tar
+  - curl -o cabal.zip https://www.haskell.org/cabal/release/cabal-install-1.24.0.0-rc1/cabal-install-1.24.0.0-rc1-i386-unknown-mingw32.zip
+  - 7z x cabal.zip
   - SET CABAL=%CD%\cabal
   - "\"%CABAL%\" --version"
   - "\"%CABAL%\" update"
@@ -15,7 +14,7 @@ build_script:
   # 'echo "" |' works around an AppVeyor issue:
   # https://github.com/commercialhaskell/stack/issues/1097#issuecomment-145747849
   - "\"%CABAL%\" --version"
-  - echo "" | "%CABAL%" install --only-dependencies --enable-tests
+  - echo "" | "%CABAL%" --http-transport=curl install --only-dependencies --enable-tests -v
 
   - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
@@ -23,7 +22,7 @@ build_script:
   - Setup install
   - cd ..\cabal-install
   - ghc --make -threaded -i -i. Setup.hs -Wall -Werror
-  - echo "" | "%CABAL%" install --only-dependencies --enable-tests --allow-newer=Cabal
+  - echo "" | "%CABAL%" --http-transport=curl install --only-dependencies --enable-tests --allow-newer=Cabal
   - Setup configure --user --ghc-option=-Werror --enable-tests
   - Setup build
   - Setup test unit-tests --show-details=streaming --test-option=--pattern=!FileMonitor
