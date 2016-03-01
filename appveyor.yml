@@ -24,4 +24,4 @@ build_script:
   - echo "" | ..\cabal install --only-dependencies --enable-tests --force-reinstalls
   - ..\cabal configure --user --ghc-option=-Werror --enable-tests
   - ..\cabal build
-  - ..\cabal test unit-tests --show-details=streaming --test-option=--pattern=!FileMonitor
+  - ..\cabal test --show-details=streaming

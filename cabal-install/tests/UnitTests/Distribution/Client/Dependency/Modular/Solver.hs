@@ -23,7 +23,13 @@ import UnitTests.Options
 
 tests :: [TF.TestTree]
 tests = [
-      testGroup "Simple dependencies" [
+      testGroup "Duplicate targets" $
+        let expected = Just [("A", 1), ("B", 1), ("C", 1), ("C", 2)]
+        in [
+           runTest $ mkTest db0 "noDuplicates" ["A", "B"]           expected
+         , runTest $ mkTest db0 "duplicates"   ["A", "A", "B", "B"] expected
+         ]
+    , testGroup "Simple dependencies" [
           runTest $         mkTest db1 "alreadyInstalled"   ["A"]      (Just [])
         , runTest $         mkTest db1 "installLatest"      ["B"]      (Just [("B", 2)])
         , runTest $         mkTest db1 "simpleDep1"         ["C"]      (Just [("B", 1), ("C", 1)])
@@ -184,6 +190,14 @@ runTest SolverTest{..} = askOption $ \(OptionShowSolverLog showSolverLog) ->
 {-------------------------------------------------------------------------------
   Specific example database for the tests
 -------------------------------------------------------------------------------}
+
+db0 :: ExampleDb
+db0 = [
+       Right $ exAv "A" 1 [ExAny "B"] `withSetupDeps` [ExFix "C" 1]
+     , Right $ exAv "B" 1 []          `withSetupDeps` [ExFix "C" 2]
+     , Right $ exAv "C" 1 []
+     , Right $ exAv "C" 2 []
+  ]
 
 db1 :: ExampleDb
 db1 =
