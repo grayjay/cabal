@@ -5,7 +5,6 @@ module Distribution.Client.Dependency.Modular.IndexConversion
 import Data.List as L
 import Data.Map as M
 import Data.Maybe
-import Data.Monoid as Mon
 import Prelude hiding (pi)
 
 import qualified Distribution.Client.PackageIndex as CI
@@ -15,7 +14,6 @@ import Distribution.Compiler
 import Distribution.InstalledPackageInfo as IPI
 import Distribution.Package                          -- from Cabal
 import Distribution.PackageDescription as PD         -- from Cabal
-import Distribution.PackageDescription.Configuration as PDC
 import qualified Distribution.Simple.PackageIndex as SI
 import Distribution.System
 
@@ -109,10 +107,9 @@ convGPD os arch cinfo strfl pi
   let
     fds  = flagInfo strfl flags
 
-    conv :: Mon.Monoid a => Component -> (a -> BuildInfo) ->
+    conv :: Component -> (a -> BuildInfo) ->
             CondTree ConfVar [Dependency] a -> FlaggedDeps Component PN
-    conv comp getInfo = convCondTree os arch cinfo pi fds comp getInfo .
-                        PDC.addBuildableCondition getInfo
+    conv comp getInfo = convCondTree os arch cinfo pi fds comp getInfo
   in
     PInfo
       (maybe []    (conv ComponentLib                     libBuildInfo         ) libs    ++

@@ -11,6 +11,7 @@ import qualified Distribution.Version as V
 
 -- test-framework
 import Test.Tasty as TF
+import Test.Tasty.ExpectedFailure (expectFail)
 import Test.Tasty.HUnit (testCase, assertEqual, assertBool)
 
 -- Cabal
@@ -106,7 +107,7 @@ tests = [
         , runTest $ soft [ ExPref "A" $ mkvrThis 1
                          , ExPref "A" $ mkvrOrEarlier 2] $ mkTest db13 "selectPreferredVersionMultiple4" ["A"] (Just [("A", 1)])
         ]
-     , testGroup "Buildable Field" [
+     , expectFail $ testGroup "Buildable Field" [
           testBuildable "avoid building component with unknown dependency" (ExAny "unknown")
         , testBuildable "avoid building component with unknown extension" (ExExt (UnknownExtension "unknown"))
         , testBuildable "avoid building component with unknown language" (ExLang (UnknownLanguage "unknown"))
