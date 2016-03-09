@@ -63,27 +63,17 @@ script:
    fi
    }
 
- - install_from_tarball
-
 # Also build cabal-install.
  - cd ../cabal-install
  - ../Cabal/misc/gen-extra-source-files.sh cabal-install.cabal
  - ../Cabal/misc/travis-diff-files.sh
- - mkdir -p ./dist/setup
- - cp Setup.hs ./dist/setup/setup.hs
- - ghc --make -odir ./dist/setup -hidir ./dist/setup -i -i. ./dist/setup/setup.hs -o ./dist/setup/setup -Wall -Werror -threaded  # the command cabal-install would use to build setup
 
- - cabal install --only-dependencies --enable-tests --enable-benchmarks
- - ./dist/setup/setup configure --user --ghc-option=-Werror --enable-tests --enable-benchmarks -v2 # -v2 provides useful information for debugging
- - ./dist/setup/setup build
- - ./dist/setup/setup haddock # see https://github.com/haskell/cabal/issues/2198
- - ./dist/setup/setup test --show-details=streaming --test-option=--hide-successes
- - cabal check
- - cabal sdist
- - install_from_tarball
-
-# Check what we got
- - $HOME/.cabal/bin/cabal --version
+ - cabal sandbox init
+ - cabal sandbox add-source ../Cabal
+ - cabal install --only-dependencies
+ - cabal --ignore-sandbox install process-1.4.2.0
+ - cabal configure
+ - cabal build
 
 matrix:
   allow_failures:
