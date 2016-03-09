@@ -71,7 +71,7 @@ script:
  - cabal sandbox init
  - cabal sandbox add-source ../Cabal
  - cabal install --only-dependencies
-# - cabal --ignore-sandbox install process-1.4.2.0
+ - cabal --ignore-sandbox install process-1.2.3.0 --allow-newer
  - cabal configure
  - cabal build
 
