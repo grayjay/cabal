@@ -25,7 +25,11 @@ import UnitTests.Options
 
 tests :: [TF.TestTree]
 tests = [
-      testGroup "Simple dependencies" [
+      testGroup "Repeated constraints" [
+          runTest $ indep $ mkTest dbRepeatedConstraints "repeated constraints" ["A", "B", "C"] $
+              Just [("A", 1), ("B", 1), ("C", 1), ("D", 2)]
+        ]
+    , testGroup "Simple dependencies" [
           runTest $         mkTest db1 "alreadyInstalled"   ["A"]      (Just [])
         , runTest $         mkTest db1 "installLatest"      ["B"]      (Just [("B", 2)])
         , runTest $         mkTest db1 "simpleDep1"         ["C"]      (Just [("B", 1), ("C", 1)])
@@ -226,6 +230,16 @@ runTest SolverTest{..} = askOption $ \(OptionShowSolverLog showSolverLog) ->
 {-------------------------------------------------------------------------------
   Specific example database for the tests
 -------------------------------------------------------------------------------}
+
+dbRepeatedConstraints :: ExampleDb
+dbRepeatedConstraints = [
+    Right $ exAv "A" 1 [ExAny "B", ExAny "C", ExAny "D"]
+  , Right $ exAv "B" 1 [] `withSetupDeps` [ExAny "C", ExAny "D"]
+  , Right $ exAv "C" 1 $ replicate 15 $
+        exFlag "flagA" [ExFix "D" 3] []
+  , Right $ exAv "D" 1 []
+  , Right $ exAv "D" 2 []
+  ]
 
 db1 :: ExampleDb
 db1 =
