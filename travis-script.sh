@@ -82,7 +82,7 @@ cabal configure \
 cabal build
 cabal haddock # see https://github.com/haskell/cabal/issues/2198
 cabal test unit-tests --show-details=streaming --test-option=--hide-successes
-cabal test integration-tests --show-details=streaming --test-option=--hide-successes
+cabal test integration-tests --show-details=streaming
 cabal check
 ./dist/setup/setup sdist
 install_from_tarball

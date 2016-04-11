@@ -85,6 +85,15 @@ Extra-Source-Files:
   tests/IntegrationTests/sandbox-sources/remove_nonexistent_source.sh
   tests/IntegrationTests/sandbox-sources/report_success_removing_source.out
   tests/IntegrationTests/sandbox-sources/report_success_removing_source.sh
+  tests/IntegrationTests/sandbox-timestamps/p/Main.hs
+  tests/IntegrationTests/sandbox-timestamps/p/Setup.hs
+  tests/IntegrationTests/sandbox-timestamps/p/p.cabal
+  tests/IntegrationTests/sandbox-timestamps/q/Q.hs
+  tests/IntegrationTests/sandbox-timestamps/q/q.cabal
+  tests/IntegrationTests/sandbox-timestamps/reinstalls-changed-source-2.out
+  tests/IntegrationTests/sandbox-timestamps/reinstalls-changed-source-2.sh
+  tests/IntegrationTests/sandbox-timestamps/reinstalls-changed-source.out
+  tests/IntegrationTests/sandbox-timestamps/reinstalls-changed-source.sh
   tests/IntegrationTests/user-config/common.sh
   tests/IntegrationTests/user-config/doesnt_overwrite_without_f.err
   tests/IntegrationTests/user-config/doesnt_overwrite_without_f.sh
