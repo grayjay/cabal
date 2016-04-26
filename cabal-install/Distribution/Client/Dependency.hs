@@ -55,6 +55,7 @@ module Distribution.Client.Dependency (
     setEnableBackjumping,
     setMaxScore,
     setFindBestSolution,
+    setDynamicGoalReordering,
     addSourcePackages,
     hideInstalledPackagesSpecificByUnitId,
     hideInstalledPackagesSpecificBySourcePackageId,
@@ -86,7 +87,7 @@ import Distribution.Client.Dependency.Types
          , LabeledPackageConstraint(..), unlabelPackageConstraint
          , ConstraintSource(..), showConstraintSource
          , InstallPlanScore, defaultInstallPlanScore
-         , FindBestSolution(..)
+         , FindBestSolution(..), DynamicGoalReordering(..)
          , PackagePreferences(..), InstalledPreference(..)
          , PackagesPreferenceDefault(..)
          , Progress(..), foldProgress )
@@ -160,7 +161,8 @@ data DepResolverParams = DepResolverParams {
        depResolverMaxBackjumps      :: Maybe Int,
        depResolverEnableBackjumping :: EnableBackjumping,
        depResolverMaxScore          :: Maybe InstallPlanScore,
-       depResolverFindBestSolution  :: FindBestSolution
+       depResolverFindBestSolution  :: FindBestSolution,
+       depResolverDynamicGoalReordering :: DynamicGoalReordering
      }
 
 showDepResolverParams :: DepResolverParams -> String
@@ -234,7 +236,8 @@ basicDepResolverParams installedPkgIndex sourcePkgIndex =
        depResolverMaxBackjumps      = Nothing,
        depResolverEnableBackjumping = EnableBackjumping True,
        depResolverMaxScore          = Nothing,
-       depResolverFindBestSolution  = FindBestSolution False
+       depResolverFindBestSolution  = FindBestSolution False,
+       depResolverDynamicGoalReordering = DynamicGoalReordering False
      }
 
 addTargets :: [PackageName]
@@ -319,6 +322,12 @@ setFindBestSolution :: FindBestSolution -> DepResolverParams -> DepResolverParam
 setFindBestSolution findBest params =
     params {
       depResolverFindBestSolution = findBest
+    }
+
+setDynamicGoalReordering :: DynamicGoalReordering -> DepResolverParams -> DepResolverParams
+setDynamicGoalReordering dynGoals params =
+    params {
+      depResolverDynamicGoalReordering = dynGoals
     }
 
 -- | Some packages are specific to a given compiler version and should never be
@@ -604,7 +613,8 @@ resolveDependencies platform comp pkgConfigDB solver params =
     Step (showDepResolverParams finalparams)
   $ fmap (uncurry $ validateSolverResult platform comp indGoals)
   $ runSolver solver (SolverConfig reorderGoals indGoals noReinstalls
-                      shadowing strFlags maxBkjumps enableBj mScore findBest)
+                      shadowing strFlags maxBkjumps enableBj mScore
+                      findBest dynGoals)
                      platform comp installedPkgIndex sourcePkgIndex
                      pkgConfigDB preferences constraints targets
   where
@@ -622,7 +632,8 @@ resolveDependencies platform comp pkgConfigDB solver params =
       maxBkjumps
       enableBj
       mScore
-      findBest) = dontUpgradeNonUpgradeablePackages
+      findBest
+      dynGoals) = dontUpgradeNonUpgradeablePackages
                       -- TODO:
                       -- The modular solver can properly deal with broken
                       -- packages and won't select them. So the
@@ -859,7 +870,7 @@ resolveWithoutDependencies (DepResolverParams targets constraints
                               prefs defpref installedPkgIndex sourcePkgIndex
                               _reorderGoals _indGoals _avoidReinstalls
                               _shadowing _strFlags _maxBjumps _enableBj _maxScore
-                              _findBest) =
+                              _findBest _dynGoals) =
     collectEithers (map selectPackage targets)
   where
     selectPackage :: PackageName -> Either ResolveNoDepsError UnresolvedSourcePackage

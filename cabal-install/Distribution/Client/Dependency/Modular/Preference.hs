@@ -29,6 +29,7 @@ import Prelude hiding (sequence)
 import Control.Monad.Reader hiding (sequence)
 import Data.Map (Map)
 import Data.Maybe
+import Data.Ord (comparing)
 
 import Distribution.Client.Dependency.Types
   ( InstallPlanScore, PackageConstraint(..), LabeledPackageConstraint(..)
@@ -413,7 +414,7 @@ deferWeakFlagChoices = trav go
 preferEasyGoalChoices :: Tree a b -> Tree a b
 preferEasyGoalChoices = trav go
   where
-    go (GoalChoiceF xs) = GoalChoiceF (P.dminimumBy dchoices xs)
+    go (GoalChoiceF xs) = GoalChoiceF (P.sortBy (comparing dchoices) xs)
       -- (a different implementation that seems slower):
       -- GoalChoiceF (P.firstOnly (P.preferOrElse zeroOrOneChoices (P.minimumBy choices) xs))
     go x                = x

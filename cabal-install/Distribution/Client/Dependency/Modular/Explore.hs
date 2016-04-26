@@ -6,6 +6,7 @@ module Distribution.Client.Dependency.Modular.Explore
 import Control.Monad.State.Lazy
 import Data.Foldable as F
 import Data.Map as M
+import Data.Ord
 
 import Distribution.Client.Dependency.Modular.Assignment
 import Distribution.Client.Dependency.Modular.Dependency
@@ -107,6 +108,11 @@ data ExploreState = ExploreState {
       -- specified with --max-score and the score of the best install plan. If
       -- neither of those two values exists, 'esMaxScore' is equal to 'Nothing'.
     , esMaxScore :: Maybe T.InstallPlanScore
+
+      -- | Variables from the last conflict set. Since they are likely to lead
+      -- to the same failure in the next subtree, the solver should try them
+      -- first.
+    , esPreferredGoals :: ConflictSet QPN
     }
 
 -- | A tree traversal that simultaneously prunes nodes based on score,
@@ -120,21 +126,26 @@ data ExploreState = ExploreState {
 explore :: T.EnableBackjumping
         -> Maybe T.InstallPlanScore
         -> T.FindBestSolution
+        -> T.DynamicGoalReordering
         -> Tree (Assignment, ScoringState) (QGoalReason, ScoringState)
         -> ConflictSetLog Plan
-explore enableBj maxScore findBest =
+explore enableBj maxScore findBest dynGoals =
     (`evalState` initES) . cata go
   where
     go :: TreeF (Assignment, ScoringState)
                 (QGoalReason, ScoringState)
                 (Explore (ConflictSetLog Plan))
        -> Explore (ConflictSetLog Plan)
-    go (FailF c fr)             = fail' c fr
+    go (FailF c fr)             = do
+      es <- get
+      put es { esPreferredGoals = c }
+      fail' c fr
     go (DoneF rdm (a, ss))      =
       maybePrune ss $ do
           put ExploreState {
                   esBestPlan = Just (a, rdm, ssTotalScore ss)
                 , esMaxScore = Just $ ssTotalScore ss
+                , esPreferredGoals = ssConflictSet ss
                 }
           if asBool findBest
           then fail' (ssConflictSet ss) $
@@ -149,8 +160,12 @@ explore enableBj maxScore findBest =
     go (SChoiceF qsn (gr, ss) _   ts) =
       maybePrune ss $ backjump enableBj (S qsn) (avoidSet (S qsn) gr) $
       W.mapWithKey (\ k r -> tryWith (TryS qsn k) `fmap` r) ts
-    go (GoalChoiceF         ts) =
-      P.casePSQ ts
+    go (GoalChoiceF         ts) = do
+      preferred <- gets esPreferredGoals
+      let ts' = if asBool dynGoals
+                then P.sortByKeys (sortGoals preferred) ts
+                else ts
+      P.casePSQ ts'
         (fail' CS.empty EmptyGoalChoice)                    -- empty goal choice is an internal error
         (\ k v _xs -> continueWith (Next (close k)) `fmap` v) -- commit to the first goal choice
 
@@ -168,7 +183,15 @@ explore enableBj maxScore findBest =
     initES = ExploreState {
                  esBestPlan = Nothing
                , esMaxScore = maxScore
+               , esPreferredGoals = CS.empty
                }
+
+    sortGoals :: ConflictSet QPN -> OpenGoal () -> OpenGoal () -> Ordering
+    sortGoals vars = flip $ comparing $ (`CS.member` vars) . goalToVar
+      where
+        goalToVar :: OpenGoal () -> Var QPN
+        goalToVar g = let Goal var _ = close g
+                      in var
 
 -- | Build a conflict set corresponding to the (virtual) option not to
 -- choose a solution for a goal at all.
@@ -205,10 +228,11 @@ fail' c fr = (\plan -> failWith (Failure c fr plan) c) `fmap` gets esBestPlan
 backjumpAndExplore :: T.EnableBackjumping
                    -> Maybe T.InstallPlanScore
                    -> T.FindBestSolution
+                   -> T.DynamicGoalReordering
                    -> Tree ScoringState (QGoalReason, ScoringState)
                    -> Log Message Plan
-backjumpAndExplore enableBj maxScore findBest =
-    toLog . explore enableBj maxScore findBest . assign
+backjumpAndExplore enableBj maxScore findBest dynGoals =
+    toLog . explore enableBj maxScore findBest dynGoals . assign
   where
     toLog :: T.Progress step fail done -> Log step done
     toLog = T.foldProgress T.Step (const (T.Fail ())) T.Done

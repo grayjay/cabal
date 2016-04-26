@@ -36,7 +36,8 @@ data SolverConfig = SolverConfig {
   maxBackjumps          :: Maybe Int,
   enableBackjumping     :: EnableBackjumping,
   maxInstallPlanScore   :: Maybe InstallPlanScore,
-  findBestSolution      :: FindBestSolution
+  findBestSolution      :: FindBestSolution,
+  dynamicGoalReordering :: DynamicGoalReordering
 }
 
 -- | Run all solver phases.
@@ -85,10 +86,11 @@ solve sc cinfo idx pkgConfigDB userPrefs userConstraints userGoals =
     explorePhase     = backjumpAndExplore (enableBackjumping sc)
                                           (maxInstallPlanScore sc)
                                           (findBestSolution sc)
+                                          (dynamicGoalReordering sc)
     scorePhase       = P.scoreTree -- must come after all preferences
     heuristicsPhase  = (if asBool (preferEasyGoalChoices sc)
-                         then P.preferEasyGoalChoices -- also leaves just one choice
-                         else P.firstGoal) . -- after doing goal-choice heuristics, commit to the first choice (saves space)
+                         then P.preferEasyGoalChoices
+                         else id) .
                        P.deferWeakFlagChoices .
                        P.deferSetupChoices .
                        P.preferBaseGoalChoice .
