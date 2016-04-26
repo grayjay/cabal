@@ -29,6 +29,7 @@ import Prelude hiding (sequence)
 import Control.Monad.Reader hiding (sequence)
 import Data.Map (Map)
 import Data.Maybe
+import Data.Ord (comparing)
 
 import Distribution.Solver.Types.ConstraintSource
 import Distribution.Solver.Types.InstalledPreference
@@ -415,7 +416,12 @@ deferWeakFlagChoices = trav go
 preferEasyGoalChoices :: Tree a b -> Tree a b
 preferEasyGoalChoices = trav go
   where
-    go (GoalChoiceF xs) = GoalChoiceF (P.dminimumBy dchoices xs)
+    -- TODO: --dynamic-goal-reordering requires this function to leave all goal
+    -- choices. If we decide to keep the feature, this function should be
+    -- refactored to calculate the first element more efficiently, as before:
+    -- go (GoalChoiceF xs) = GoalChoiceF (P.dminimumBy dchoices xs)
+
+    go (GoalChoiceF xs) = GoalChoiceF (P.sortBy (comparing dchoices) xs)
       -- (a different implementation that seems slower):
       -- GoalChoiceF (P.firstOnly (P.preferOrElse zeroOrOneChoices (P.minimumBy choices) xs))
     go x                = x

@@ -302,6 +302,7 @@ convertLegacyAllPackageFlags globalFlags configFlags
     --installOverrideReinstall  = projectConfigOverrideReinstall,
       installMaxBackjumps       = projectConfigMaxBackjumps,
     --installMaxScore           = projectConfigMaxScore,
+    --installDynamicGoalReordering = projectConfigDynamicGoalReordering,
     --installUpgradeDeps        = projectConfigUpgradeDeps,
       installReorderGoals       = projectConfigReorderGoals,
     --installIndependentGoals   = projectConfigIndependentGoals,
@@ -494,6 +495,7 @@ convertToLegacySharedConfig
       installOverrideReinstall = mempty, --projectConfigOverrideReinstall,
       installMaxBackjumps      = projectConfigMaxBackjumps,
       installMaxScore          = mempty, --projectConfigMaxScore,
+      installDynamicGoalReordering = mempty, --projectConfigDynamicGoalReordering
       installUpgradeDeps       = mempty, --projectConfigUpgradeDeps,
       installFindBestSolution  = mempty, --projectConfigFindBestSolution,
       installReorderGoals      = projectConfigReorderGoals,
