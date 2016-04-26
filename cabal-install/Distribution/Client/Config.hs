@@ -240,6 +240,7 @@ instance Semigroup SavedConfig where
         installMaxBackjumps          = combine installMaxBackjumps,
         installMaxScore              = combine installMaxScore,
         installFindBestSolution      = combine installFindBestSolution,
+        installDynamicGoalReordering = combine installDynamicGoalReordering,
         installReorderGoals          = combine installReorderGoals,
         installIndependentGoals      = combine installIndependentGoals,
         installShadowPkgs            = combine installShadowPkgs,
