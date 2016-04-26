@@ -607,6 +607,7 @@ data FetchFlags = FetchFlags {
       fetchMaxBackjumps     :: Flag Int,
       fetchMaxScore         :: Flag InstallPlanScore,
       fetchFindBestSolution :: Flag FindBestSolution,
+      fetchDynamicGoalReordering :: Flag DynamicGoalReordering,
       fetchReorderGoals     :: Flag ReorderGoals,
       fetchIndependentGoals :: Flag IndependentGoals,
       fetchShadowPkgs       :: Flag ShadowPkgs,
@@ -623,6 +624,7 @@ defaultFetchFlags = FetchFlags {
     fetchMaxBackjumps     = Flag defaultMaxBackjumps,
     fetchMaxScore         = mempty,
     fetchFindBestSolution = Flag (FindBestSolution False),
+    fetchDynamicGoalReordering = Flag (DynamicGoalReordering False),
     fetchReorderGoals     = Flag (ReorderGoals False),
     fetchIndependentGoals = Flag (IndependentGoals False),
     fetchShadowPkgs       = Flag (ShadowPkgs False),
@@ -671,6 +673,7 @@ fetchCommand = CommandUI {
                          fetchMaxBackjumps     (\v flags -> flags { fetchMaxBackjumps     = v })
                          fetchMaxScore         (\v flags -> flags { fetchMaxScore         = v })
                          fetchFindBestSolution (\v flags -> flags { fetchFindBestSolution = v })
+                         fetchDynamicGoalReordering (\v flags -> flags { fetchDynamicGoalReordering = v })
                          fetchReorderGoals     (\v flags -> flags { fetchReorderGoals     = v })
                          fetchIndependentGoals (\v flags -> flags { fetchIndependentGoals = v })
                          fetchShadowPkgs       (\v flags -> flags { fetchShadowPkgs       = v })
@@ -690,6 +693,7 @@ data FreezeFlags = FreezeFlags {
       freezeMaxBackjumps     :: Flag Int,
       freezeMaxScore         :: Flag InstallPlanScore,
       freezeFindBestSolution :: Flag FindBestSolution,
+      freezeDynamicGoalReordering :: Flag DynamicGoalReordering,
       freezeReorderGoals     :: Flag ReorderGoals,
       freezeIndependentGoals :: Flag IndependentGoals,
       freezeShadowPkgs       :: Flag ShadowPkgs,
@@ -706,6 +710,7 @@ defaultFreezeFlags = FreezeFlags {
     freezeMaxBackjumps     = Flag defaultMaxBackjumps,
     freezeMaxScore         = mempty,
     freezeFindBestSolution = Flag (FindBestSolution False),
+    freezeDynamicGoalReordering = Flag (DynamicGoalReordering False),
     freezeReorderGoals     = Flag (ReorderGoals False),
     freezeIndependentGoals = Flag (IndependentGoals False),
     freezeShadowPkgs       = Flag (ShadowPkgs False),
@@ -753,6 +758,7 @@ freezeCommand = CommandUI {
                          freezeMaxBackjumps     (\v flags -> flags { freezeMaxBackjumps     = v })
                          freezeMaxScore         (\v flags -> flags { freezeMaxScore         = v })
                          freezeFindBestSolution (\v flags -> flags { freezeFindBestSolution = v })
+                         freezeDynamicGoalReordering (\v flags -> flags { freezeDynamicGoalReordering = v })
                          freezeReorderGoals     (\v flags -> flags { freezeReorderGoals     = v })
                          freezeIndependentGoals (\v flags -> flags { freezeIndependentGoals = v })
                          freezeShadowPkgs       (\v flags -> flags { freezeShadowPkgs       = v })
@@ -1157,6 +1163,7 @@ data InstallFlags = InstallFlags {
     installMaxBackjumps     :: Flag Int,
     installMaxScore         :: Flag InstallPlanScore,
     installFindBestSolution :: Flag FindBestSolution,
+    installDynamicGoalReordering :: Flag DynamicGoalReordering,
     installReorderGoals     :: Flag ReorderGoals,
     installIndependentGoals :: Flag IndependentGoals,
     installShadowPkgs       :: Flag ShadowPkgs,
@@ -1190,6 +1197,7 @@ defaultInstallFlags = InstallFlags {
     installMaxBackjumps    = Flag defaultMaxBackjumps,
     installMaxScore        = mempty,
     installFindBestSolution= Flag (FindBestSolution False),
+    installDynamicGoalReordering = Flag (DynamicGoalReordering False),
     installReorderGoals    = Flag (ReorderGoals False),
     installIndependentGoals= Flag (IndependentGoals False),
     installShadowPkgs      = Flag (ShadowPkgs False),
@@ -1336,6 +1344,7 @@ installOptions showOrParseArgs =
                         installMaxBackjumps     (\v flags -> flags { installMaxBackjumps     = v })
                         installMaxScore         (\v flags -> flags { installMaxScore         = v })
                         installFindBestSolution (\v flags -> flags { installFindBestSolution = v })
+                        installDynamicGoalReordering (\v flags -> flags { installDynamicGoalReordering = v })
                         installReorderGoals     (\v flags -> flags { installReorderGoals     = v })
                         installIndependentGoals (\v flags -> flags { installIndependentGoals = v })
                         installShadowPkgs       (\v flags -> flags { installShadowPkgs       = v })
@@ -2090,12 +2099,13 @@ optionSolverFlags :: ShowOrParseArgs
                   -> (flags -> Flag Int   ) -> (Flag Int    -> flags -> flags)
                   -> (flags -> Flag InstallPlanScore) -> (Flag InstallPlanScore -> flags -> flags)
                   -> (flags -> Flag FindBestSolution) -> (Flag FindBestSolution -> flags -> flags)
+                  -> (flags -> Flag DynamicGoalReordering) -> (Flag DynamicGoalReordering -> flags -> flags)
                   -> (flags -> Flag ReorderGoals)     -> (Flag ReorderGoals     -> flags -> flags)
                   -> (flags -> Flag IndependentGoals) -> (Flag IndependentGoals -> flags -> flags)
                   -> (flags -> Flag ShadowPkgs)       -> (Flag ShadowPkgs       -> flags -> flags)
                   -> (flags -> Flag StrongFlags)      -> (Flag StrongFlags      -> flags -> flags)
                   -> [OptionField flags]
-optionSolverFlags showOrParseArgs getmbj setmbj getms setms getfb setfb getrg setrg _getig _setig getsip setsip getstrfl setstrfl =
+optionSolverFlags showOrParseArgs getmbj setmbj getms setms getfb setfb getdyn setdyn getrg setrg _getig _setig getsip setsip getstrfl setstrfl =
   [ option [] ["max-backjumps"]
       ("Maximum number of backjumps allowed while solving (default: " ++ show defaultMaxBackjumps ++ "). Use a negative number to enable unlimited backtracking. Use 0 to disable backtracking completely.")
       getmbj setmbj
@@ -2111,6 +2121,11 @@ optionSolverFlags showOrParseArgs getmbj setmbj getms setms getfb setfb getrg se
       "Find the best-scoring solution within the backjump limit."
       (fmap asBool . getfb)
       (setfb . fmap FindBestSolution)
+      (yesNoOpt showOrParseArgs)
+  , option [] ["dynamic-goal-reordering"]
+      "Prefer goals that were previously involved in a conflict."
+      (fmap asBool . getdyn)
+      (setdyn . fmap DynamicGoalReordering)
       (yesNoOpt showOrParseArgs)
   , option [] ["reorder-goals"]
       "Try to reorder goals according to certain heuristics. Slows things down on average, but may make backtracking faster for some packages."
