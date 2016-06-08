@@ -104,6 +104,9 @@ Extra-Source-Files:
   tests/IntegrationTests/sandbox-sources/remove_nonexistent_source.sh
   tests/IntegrationTests/sandbox-sources/report_success_removing_source.out
   tests/IntegrationTests/sandbox-sources/report_success_removing_source.sh
+  tests/IntegrationTests/setup-deps/Setup.hs
+  tests/IntegrationTests/setup-deps/custom-setup.cabal
+  tests/IntegrationTests/setup-deps/install_setup_deps.sh
   tests/IntegrationTests/user-config/common.sh
   tests/IntegrationTests/user-config/doesnt_overwrite_without_f.err
   tests/IntegrationTests/user-config/doesnt_overwrite_without_f.sh
