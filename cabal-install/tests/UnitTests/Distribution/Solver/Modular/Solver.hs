@@ -72,6 +72,7 @@ tests = [
         , runTest $         mkTest db9  "setupDeps7" ["F", "G"] (SolverSuccess [("A", 1), ("B", 1), ("B",2 ), ("C", 1), ("D", 1), ("E", 1), ("E", 2), ("F", 1), ("G", 1)])
         , runTest $         mkTest db10 "setupDeps8" ["C"] (SolverSuccess [("C", 1)])
         , runTest $ indep $ mkTest dbSetupDeps "setupDeps9" ["A", "B"] (SolverSuccess [("A", 1), ("B", 1), ("C", 1), ("D", 1), ("D", 2)])
+        , runTest $ issue2899 "issue 2899 space leak"
         ]
     , testGroup "Base shim" [
           runTest $ mkTest db11 "baseShim1" ["A"] (SolverSuccess [("A", 1)])
@@ -168,6 +169,9 @@ tests = [
 indep :: SolverTest -> SolverTest
 indep test = test { testIndepGoals = IndependentGoals True }
 
+disableBj :: SolverTest -> SolverTest
+disableBj test  = test { testEnableBackjumping = EnableBackjumping False }
+
 goalOrder :: [ExampleVar] -> SolverTest -> SolverTest
 goalOrder order test = test { testGoalOrder = Just order }
 
@@ -182,6 +186,7 @@ data SolverTest = SolverTest {
   , testTargets        :: [String]
   , testResult         :: SolverResult
   , testIndepGoals     :: IndependentGoals
+  , testEnableBackjumping :: EnableBackjumping
   , testGoalOrder      :: Maybe [ExampleVar]
   , testSoftConstraints :: [ExPreference]
   , testDb             :: ExampleDb
@@ -257,6 +262,7 @@ mkTestExtLangPC exts langs pkgConfigDb db label targets result = SolverTest {
   , testTargets        = targets
   , testResult         = result
   , testIndepGoals     = IndependentGoals False
+  , testEnableBackjumping = EnableBackjumping True
   , testGoalOrder      = Nothing
   , testSoftConstraints = []
   , testDb             = db
@@ -271,7 +277,7 @@ runTest SolverTest{..} = askOption $ \(OptionShowSolverLog showSolverLog) ->
       let lg = exResolve testDb testSupportedExts
                testSupportedLangs testPkgConfigDb testTargets
                Modular Nothing testIndepGoals (ReorderGoals False)
-               (EnableBackjumping True) testGoalOrder testSoftConstraints
+               testEnableBackjumping testGoalOrder testSoftConstraints
           logMsg msg = if showSolverLog
                        then putStrLn msg
                        else return ()
@@ -502,6 +508,39 @@ dbSetupDeps = [
   , Right $ exAv "D" 1 []
   , Right $ exAv "D" 2 []
   ]
+
+-- | Test for a space leak caused by sharing of search trees under packages with
+-- link choices (issue #2899).
+--
+-- The goal order is fixed so that the solver chooses setup-dep and then
+-- target-setup.setup-dep at the top of the search tree. target-setup.setup-dep
+-- has two choices: link to setup-dep, and don't link to setup-dep. setup-dep
+-- has a long chain of dependencies (pkg-1 through pkg-n). However, pkg-n
+-- depends on pkg-n+1, which doesn't exist, so there is no solution. Since each
+-- dependency has two versions, the solver must try 2^n combinations when
+-- backjumping is disabled. These combinations create large search trees under
+-- each of the two choices for target-setup.setup-dep. Although the choice to
+-- not link is disallowed by the Single Instance Restriction, the solver doesn't
+-- know that until it has explored (and evaluated) the whole tree under the
+-- choice to link. If the two trees are shared, memory usage spikes.
+issue2899 :: String -> SolverTest
+issue2899 name =
+    disableBj $ goalOrder goals $ mkTest pkgs name ["target"] anySolverFailure
+  where
+    n :: Int
+    n = 14
+
+    pkgs = map Right $
+           [ exAv "target" 1 [ExAny "setup-dep"] `withSetupDeps` [ExAny "setup-dep"]
+           , exAv "setup-dep" 1 [ExAny "pkg-1"]]
+        ++ [ exAv (pkgName i) v [ExAny $ pkgName (i + 1)]
+           | i <- [1..n], v <- [1, 2]]
+
+    pkgName :: Int -> String
+    pkgName x = "pkg-" ++ show x
+
+    goals :: [ExampleVar]
+    goals = [P None "setup-dep", P (Setup "target") "setup-dep"]
 
 -- | Tests for dealing with base shims
 db11 :: ExampleDb
