@@ -131,6 +131,13 @@ Extra-Source-Files:
   tests/IntegrationTests/regression/t3335/Setup.hs
   tests/IntegrationTests/regression/t3335/cabal.project
   tests/IntegrationTests/regression/t3335/t3335.cabal
+  tests/IntegrationTests/regression/t3436.sh
+  tests/IntegrationTests/regression/t3436/Cabal-99998/Cabal.cabal
+  tests/IntegrationTests/regression/t3436/Cabal-99998/CabalMessage.hs
+  tests/IntegrationTests/regression/t3436/Cabal-99999/Cabal.cabal
+  tests/IntegrationTests/regression/t3436/Cabal-99999/CabalMessage.hs
+  tests/IntegrationTests/regression/t3436/Setup.hs
+  tests/IntegrationTests/regression/t3436/custom-setup.cabal
   tests/IntegrationTests/sandbox-reinstalls/p/Main.hs
   tests/IntegrationTests/sandbox-reinstalls/p/p.cabal
   tests/IntegrationTests/sandbox-reinstalls/q/Q.hs
