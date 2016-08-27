@@ -106,7 +106,7 @@ import Control.Applicative ( (<$>), (<*>) )
 import Data.Monoid         ( mempty )
 #endif
 import Control.Monad       ( when, unless )
-import Data.List           ( foldl1' )
+import Data.List           ( find, foldl1' )
 import Data.Maybe          ( fromMaybe, isJust )
 import Data.Char           ( isSpace )
 import Distribution.Client.Compat.ExecutablePath  ( getExecutablePath )
@@ -392,23 +392,30 @@ externalSetupMethod verbosity options pkg bt mkargs = do
   cabalLibVersionToUse :: IO (Version, (Maybe ComponentId)
                              ,SetupScriptOptions)
   cabalLibVersionToUse =
-    case useCabalSpecVersion options of
-      Just version -> do
+    case find hasCabal (useDependencies options) of
+      Just (unitId, pkgId) -> do
+        let version = pkgVersion pkgId
         updateSetupScript version bt
         writeFile setupVersionFile (show version ++ "\n")
-        return (version, Nothing, options)
-      Nothing  -> do
-        savedVer <- savedVersion
-        case savedVer of
-          Just version | version `withinRange` useCabalVersion options
-            -> do updateSetupScript version bt
-                  -- Does the previously compiled setup executable still exist
-                  -- and is it up-to date?
-                  useExisting <- canUseExistingSetup version
-                  if useExisting
-                    then return (version, Nothing, options)
-                    else installedVersion
-          _ -> installedVersion
+        return (version, Just unitId, options)
+      Nothing ->
+        case useCabalSpecVersion options of
+          Just version -> do
+            updateSetupScript version bt
+            writeFile setupVersionFile (show version ++ "\n")
+            return (version, Nothing, options)
+          Nothing  -> do
+            savedVer <- savedVersion
+            case savedVer of
+              Just version | version `withinRange` useCabalVersion options
+                -> do updateSetupScript version bt
+                      -- Does the previously compiled setup executable still exist
+                      -- and is it up-to date?
+                      useExisting <- canUseExistingSetup version
+                      if useExisting
+                        then return (version, Nothing, options)
+                        else installedVersion
+              _ -> installedVersion
     where
       -- This check duplicates the checks in 'getCachedSetupExecutable' /
       -- 'compileSetupExecutable'. Unfortunately, we have to perform it twice
@@ -423,6 +430,9 @@ externalSetupMethod verbosity options pkg bt mkargs = do
         else
           (&&) <$> setupProgFile `existsAndIsMoreRecentThan` setupHs
                <*> setupProgFile `existsAndIsMoreRecentThan` setupVersionFile
+
+      hasCabal (_, PackageIdentifier (PackageName "Cabal") _) = True
+      hasCabal _                                              = False
 
       installedVersion :: IO (Version, Maybe InstalledPackageId
                              ,SetupScriptOptions)
