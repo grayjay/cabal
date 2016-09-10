@@ -54,7 +54,7 @@ import qualified Distribution.Solver.Modular.WeightedPSQ as W
 -- siblings' versions, and package option. 'addWeights' prepends the new
 -- weights to the existing weights, which gives precedence to preferences that
 -- are applied later.
-addWeights :: [PN -> [Ver] -> POption -> Weight] -> Tree a -> Tree a
+addWeights :: [PN -> [Ver] -> POption -> Weight] -> Tree a b -> Tree a b
 addWeights fs = trav go
   where
     go (PChoiceF qpn@(Q _ pn) x cs) =
@@ -64,21 +64,21 @@ addWeights fs = trav go
           W.mapWeightsWithKey (\k w -> weights k ++ w) cs
     go x                            = x
 
-addWeight :: (PN -> [Ver] -> POption -> Weight) -> Tree a -> Tree a
+addWeight :: (PN -> [Ver] -> POption -> Weight) -> Tree a b -> Tree a b
 addWeight f = addWeights [f]
 
 version :: POption -> Ver
 version (POption (I v _) _) = v
 
 -- | Prefer to link packages whenever possible.
-preferLinked :: Tree a -> Tree a
+preferLinked :: Tree a b -> Tree a b
 preferLinked = addWeight (const (const linked))
   where
     linked (POption _ Nothing)  = 1
     linked (POption _ (Just _)) = 0
 
 -- Works by setting weights on choice nodes. Also applies stanza preferences.
-preferPackagePreferences :: (PN -> PackagePreferences) -> Tree a -> Tree a
+preferPackagePreferences :: (PN -> PackagePreferences) -> Tree a b -> Tree a b
 preferPackagePreferences pcs =
     preferPackageStanzaPreferences pcs .
     addWeights [
@@ -122,7 +122,7 @@ preferPackagePreferences pcs =
 
 -- | Traversal that tries to establish package stanza enable\/disable
 -- preferences. Works by reordering the branches of stanza choices.
-preferPackageStanzaPreferences :: (PN -> PackagePreferences) -> Tree a -> Tree a
+preferPackageStanzaPreferences :: (PN -> PackagePreferences) -> Tree a b -> Tree a b
 preferPackageStanzaPreferences pcs = trav go
   where
     go (SChoiceF qsn@(SN (PI (Q pp pn) _) s) gr _tr ts)
@@ -147,8 +147,8 @@ processPackageConstraintP :: PackagePath
                           -> ConflictSet QPN
                           -> I
                           -> LabeledPackageConstraint
-                          -> Tree a
-                          -> Tree a
+                          -> Tree a b
+                          -> Tree a b
 processPackageConstraintP pp _ _ (LabeledPackageConstraint _ src) r
   | src == ConstraintSourceUserTarget && not (primaryPP pp)         = r
     -- the constraints arising from targets, like "foo-1.0" only apply to
@@ -175,8 +175,8 @@ processPackageConstraintF :: Flag
                           -> ConflictSet QPN
                           -> Bool
                           -> LabeledPackageConstraint
-                          -> Tree a
-                          -> Tree a
+                          -> Tree a b
+                          -> Tree a b
 processPackageConstraintF f c b' (LabeledPackageConstraint pc src) r = go pc
   where
     go (PackageConstraintFlags _ fa) =
@@ -194,8 +194,8 @@ processPackageConstraintS :: OptionalStanza
                           -> ConflictSet QPN
                           -> Bool
                           -> LabeledPackageConstraint
-                          -> Tree a
-                          -> Tree a
+                          -> Tree a b
+                          -> Tree a b
 processPackageConstraintS s c b' (LabeledPackageConstraint pc src) r = go pc
   where
     go (PackageConstraintStanzas _ ss) =
@@ -207,8 +207,8 @@ processPackageConstraintS s c b' (LabeledPackageConstraint pc src) r = go pc
 -- by selectively disabling choices that have been ruled out by global user
 -- constraints.
 enforcePackageConstraints :: M.Map PN [LabeledPackageConstraint]
-                          -> Tree a
-                          -> Tree a
+                          -> Tree a b
+                          -> Tree a b
 enforcePackageConstraints pcs = trav go
   where
     go (PChoiceF qpn@(Q pp pn)              gr      ts) =
@@ -236,7 +236,7 @@ enforcePackageConstraints pcs = trav go
 -- be run after user preferences have been enforced. For manual flags,
 -- it checks if a user choice has been made. If not, it disables all but
 -- the first choice.
-enforceManualFlags :: Tree a -> Tree a
+enforceManualFlags :: Tree a b -> Tree a b
 enforceManualFlags = trav go
   where
     go (FChoiceF qfn gr tr True ts) = FChoiceF qfn gr tr True $
@@ -250,7 +250,7 @@ enforceManualFlags = trav go
     go x                                                   = x
 
 -- | Require installed packages.
-requireInstalled :: (PN -> Bool) -> Tree a -> Tree a
+requireInstalled :: (PN -> Bool) -> Tree a b -> Tree a b
 requireInstalled p = trav go
   where
     go (PChoiceF v@(Q _ pn) gr cs)
@@ -274,7 +274,7 @@ requireInstalled p = trav go
 -- they are, perhaps this should just result in trying to reinstall those other
 -- packages as well. However, doing this all neatly in one pass would require to
 -- change the builder, or at least to change the goal set after building.
-avoidReinstalls :: (PN -> Bool) -> Tree a -> Tree a
+avoidReinstalls :: (PN -> Bool) -> Tree a b -> Tree a b
 avoidReinstalls p = trav go
   where
     go (PChoiceF qpn@(Q _ pn) gr cs)
@@ -292,7 +292,7 @@ avoidReinstalls p = trav go
     go x          = x
 
 -- | Sort all goals using the provided function.
-sortGoals :: (Variable QPN -> Variable QPN -> Ordering) -> Tree a -> Tree a
+sortGoals :: (Variable QPN -> Variable QPN -> Ordering) -> Tree a b -> Tree a b
 sortGoals variableOrder = trav go
   where
     go (GoalChoiceF xs) = GoalChoiceF (P.sortByKeys goalOrder xs)
@@ -312,7 +312,7 @@ sortGoals variableOrder = trav go
 -- This is unnecessary for the default search strategy, because
 -- it descends only into the first goal choice anyway,
 -- but may still make sense to just reduce the tree size a bit.
-firstGoal :: Tree a -> Tree a
+firstGoal :: Tree a b -> Tree a b
 firstGoal = trav go
   where
     go (GoalChoiceF xs) = GoalChoiceF (P.firstOnly xs)
@@ -322,7 +322,7 @@ firstGoal = trav go
 -- | Transformation that tries to make a decision on base as early as
 -- possible. In nearly all cases, there's a single choice for the base
 -- package. Also, fixing base early should lead to better error messages.
-preferBaseGoalChoice :: Tree a -> Tree a
+preferBaseGoalChoice :: Tree a b -> Tree a b
 preferBaseGoalChoice = trav go
   where
     go (GoalChoiceF xs) = GoalChoiceF (P.preferByKeys isBase xs)
@@ -334,7 +334,7 @@ preferBaseGoalChoice = trav go
 
 -- | Deal with setup dependencies after regular dependencies, so that we can
 -- will link setup depencencies against package dependencies when possible
-deferSetupChoices :: Tree a -> Tree a
+deferSetupChoices :: Tree a b -> Tree a b
 deferSetupChoices = trav go
   where
     go (GoalChoiceF xs) = GoalChoiceF (P.preferByKeys noSetup xs)
@@ -347,17 +347,17 @@ deferSetupChoices = trav go
 -- | Transformation that tries to avoid making weak flag choices early.
 -- Weak flags are trivial flags (not influencing dependencies) or such
 -- flags that are explicitly declared to be weak in the index.
-deferWeakFlagChoices :: Tree a -> Tree a
+deferWeakFlagChoices :: Tree a b -> Tree a b
 deferWeakFlagChoices = trav go
   where
     go (GoalChoiceF xs) = GoalChoiceF (P.prefer noWeakStanza (P.prefer noWeakFlag xs))
     go x                = x
 
-    noWeakStanza :: Tree a -> Bool
+    noWeakStanza :: Tree a b -> Bool
     noWeakStanza (SChoice _ _ (WeakOrTrivial True) _) = False
     noWeakStanza _                                    = True
 
-    noWeakFlag :: Tree a -> Bool
+    noWeakFlag :: Tree a b -> Bool
     noWeakFlag (FChoice _ _ (WeakOrTrivial True) _ _) = False
     noWeakFlag _                                      = True
 
@@ -379,7 +379,7 @@ deferWeakFlagChoices = trav go
 --
 -- Returns at most one choice.
 --
-preferEasyGoalChoices :: Tree a -> Tree a
+preferEasyGoalChoices :: Tree a b -> Tree a b
 preferEasyGoalChoices = trav go
   where
     go (GoalChoiceF xs) = GoalChoiceF (P.dminimumBy dchoices xs)
@@ -392,7 +392,7 @@ preferEasyGoalChoices = trav go
 -- 'preferEasyGoalChoices', this may return more than one
 -- choice.
 --
-preferReallyEasyGoalChoices :: Tree a -> Tree a
+preferReallyEasyGoalChoices :: Tree a b -> Tree a b
 preferReallyEasyGoalChoices = trav go
   where
     go (GoalChoiceF xs) = GoalChoiceF (P.prefer zeroOrOneChoices xs)
@@ -410,10 +410,10 @@ type EnforceSIR = Reader (Map (PI PN) QPN)
 -- (that is, package name + package version) there can be at most one qualified
 -- goal resolving to that instance (there may be other goals _linking_ to that
 -- instance however).
-enforceSingleInstanceRestriction :: Tree a -> Tree a
+enforceSingleInstanceRestriction :: Tree a b -> Tree a b
 enforceSingleInstanceRestriction = (`runReader` M.empty) . cata go
   where
-    go :: TreeF a (EnforceSIR (Tree a)) -> EnforceSIR (Tree a)
+    go :: TreeF a b (EnforceSIR (Tree a b)) -> EnforceSIR (Tree a b)
 
     -- We just verify package choices.
     go (PChoiceF qpn gr cs) =
@@ -422,7 +422,7 @@ enforceSingleInstanceRestriction = (`runReader` M.empty) . cata go
       innM _otherwise
 
     -- The check proper
-    goP :: QPN -> POption -> EnforceSIR (Tree a) -> EnforceSIR (Tree a)
+    goP :: QPN -> POption -> EnforceSIR (Tree a b) -> EnforceSIR (Tree a b)
     goP qpn@(Q _ pn) (POption i linkedTo) r = do
       let inst = PI pn i
       env <- ask
