@@ -134,6 +134,8 @@ tests = [
         , runTest $ preferences [ExStanzaPref "pkg" [TestStanzas]] $
           mkTest dbStanzaPreferences2 "disable testing when it's not possible" ["pkg"] $
           solverSuccess [("pkg", 1)]
+
+        , testStanzaPreference "test stanza preference"
         ]
      , testGroup "Buildable Field" [
           testBuildable "avoid building component with unknown dependency" (ExAny "unknown")
@@ -634,6 +636,32 @@ dbStanzaPreferences2 :: ExampleDb
 dbStanzaPreferences2 = [
     Right $ exAv "pkg" 1 [] `withTest` ExTest "test" [ExAny "unknown"]
   ]
+
+-- | This test demonstrates a bug in stanza preferences. The solver should be
+-- able to install 'A' by enabling 'flag' and disabling testing. When it tries
+-- goals in the specified order and prefers testing, it encounters
+-- 'unknown-pkg2'. 'unknown-pkg2' is only introduced by testing and 'flag', so
+-- the conflict set should contain both of those variables. However, it only
+-- contains 'flag'. The solver backjumps past the choice to disable testing and
+-- fails to find the solution.
+testStanzaPreference :: String -> TestTree
+testStanzaPreference name =
+  let pkg = exAv "A" 1    [exFlag "flag"
+                              []
+                              [ExAny "unknown-pkg1"]]
+             `withTest`
+            ExTest "test" [exFlag "flag"
+                              [ExAny "unknown-pkg2"]
+                              []]
+      goals = [
+          P None "A"
+        , F None "A" "flag"
+        , S None "A" TestStanzas
+        ]
+  in runTest $ goalOrder goals $
+     preferences [ ExStanzaPref "A" [TestStanzas]] $
+     mkTest [Right pkg] name ["A"] $
+     solverSuccess [("A", 1)]
 
 -- | Database with some cycles
 --
