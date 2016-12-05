@@ -57,6 +57,7 @@ tests = [
         , runTest $ indep $ enableAllTests $ mkTest db5 "simpleTest7" ["E", "G"] (solverSuccess [("A", 1), ("A", 2), ("E", 1), ("G", 1)])
         , runTest $         enableAllTests $ mkTest db6 "depsWithTests1" ["C"]      (solverSuccess [("A", 1), ("B", 1), ("C", 1)])
         , runTest $ indep $ enableAllTests $ mkTest db6 "depsWithTests2" ["C", "D"] (solverSuccess [("A", 1), ("B", 1), ("C", 1), ("D", 1)])
+        , runTest $ testTestSuiteWithFlag "test suite with flag"
         ]
     , testGroup "Setup dependencies" [
           runTest $         mkTest db7  "setupDeps1" ["B"] (solverSuccess [("A", 2), ("B", 1)])
@@ -317,6 +318,27 @@ db6 = [
   , Right $ exAv "C" 1 [ExFix "A" 1, ExAny "B"]
   , Right $ exAv "D" 1 [ExAny "B"]
   ]
+
+testTestSuiteWithFlag :: String -> SolverTest
+testTestSuiteWithFlag name =
+    goalOrder goals $ enableAllTests $ mkTest db name ["A", "B"] $
+    solverSuccess [("A", 1), ("B", 1)]
+  where
+    db :: ExampleDb
+    db = [
+        Right $ exAv "A" 1 []
+          `withTest`
+            ExTest "test" [exFlag "flag" [ExFix "B" 2] []]
+      , Right $ exAv "B" 1 []
+      ]
+
+    goals :: [ExampleVar]
+    goals = [
+        P None "B"
+      , P None "A"
+      , F None "A" "flag"
+      , S None "A" TestStanzas
+      ]
 
 -- Packages with setup dependencies
 --
