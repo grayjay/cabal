@@ -434,13 +434,7 @@ data LinkGroup = LinkGroup {
 -- | Invariant for the set of link groups: every element in the link group
 -- must be pointing to the /same/ link group
 lgInvariant :: Map QPN LinkGroup -> Bool
-lgInvariant links = all invGroup (M.elems links)
-  where
-    invGroup :: LinkGroup -> Bool
-    invGroup lg = allEqual $ map (`M.lookup` links) members
-      where
-        members :: [QPN]
-        members = map (`Q` lgPackage lg) $ S.toList (lgMembers lg)
+lgInvariant _ = False
 
 -- | Package version of this group
 --
