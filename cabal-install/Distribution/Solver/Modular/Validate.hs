@@ -29,8 +29,6 @@ import Distribution.Solver.Modular.Tree
 import Distribution.Solver.Modular.Version (VR)
 import qualified Distribution.Solver.Modular.WeightedPSQ as W
 
-import Distribution.Solver.Types.ComponentDeps (Component)
-
 import Distribution.Solver.Types.PackagePath
 import Distribution.Solver.Types.PkgConfigDb (PkgConfigDb, pkgConfigPkgIsPresent)
 
@@ -90,7 +88,7 @@ data ValidateState = VS {
   supportedLang :: Language  -> Bool,
   presentPkgs   :: PkgconfigName -> VR  -> Bool,
   index :: Index,
-  saved :: Map QPN (FlaggedDeps Component QPN), -- saved, scoped, dependencies
+  saved :: Map QPN (FlaggedDeps QPN), -- saved, scoped, dependencies
   pa    :: PreAssignment,
   qualifyOptions :: QualifyOptions
 }
@@ -154,7 +152,8 @@ validate = cata go
       -- the new active constraints are given by the instance we have chosen,
       -- plus the dependency information we have for that instance
       -- TODO: is the False here right?
-      let newactives = Dep False {- not exe -} qpn (Fixed i (P qpn)) : L.map (resetVar (P qpn)) (extractDeps pfa psa qdeps)
+      let newactives = GoalDep (PackageDep False {- not exe -} qpn (Fixed i (P qpn)))
+                         : L.map (resetVar (P qpn)) (extractDeps pfa psa qdeps)
       -- We now try to extend the partial assignment with the new active constraints.
       let mnppa = extend extSupported langSupported pkgPresent (P qpn) ppa newactives
       -- In case we continue, we save the scoped dependencies
@@ -221,45 +220,47 @@ validate = cata go
 -- | We try to extract as many concrete dependencies from the given flagged
 -- dependencies as possible. We make use of all the flag knowledge we have
 -- already acquired.
-extractDeps :: FAssignment -> SAssignment -> FlaggedDeps comp QPN -> [Dep QPN]
+extractDeps :: FAssignment -> SAssignment -> FlaggedDeps QPN -> [Dep QPN]
 extractDeps fa sa deps = do
   d <- deps
   case d of
-    Simple sd _         -> return sd
-    Flagged qfn _ td fd -> case M.lookup qfn fa of
+    SimpleDep sd _         -> return $ GoalDep sd
+    SimpleConstraint c _   -> return $ ConstraintDep c
+    Flagged (FlagDeps (PkgFlagInfo qfn _) td fd) -> case M.lookup qfn fa of
                              Nothing    -> mzero
                              Just True  -> extractDeps fa sa td
                              Just False -> extractDeps fa sa fd
-    Stanza qsn td       -> case M.lookup qsn sa of
+    Flagged (FlagDeps (StanzaInfo qsn)    td fd) -> case M.lookup qsn sa of
                              Nothing    -> mzero
                              Just True  -> extractDeps fa sa td
-                             Just False -> []
+                             Just False -> extractDeps fa sa fd
 
 -- | We try to find new dependencies that become available due to the given
 -- flag or stanza choice. We therefore look for the choice in question, and then call
 -- 'extractDeps' for everything underneath.
-extractNewDeps :: Var QPN -> Bool -> FAssignment -> SAssignment -> FlaggedDeps comp QPN -> [Dep QPN]
+extractNewDeps :: Var QPN -> Bool -> FAssignment -> SAssignment -> FlaggedDeps QPN -> [Dep QPN]
 extractNewDeps v b fa sa = go
   where
-    go :: FlaggedDeps comp QPN -> [Dep QPN] -- Type annotation necessary (polymorphic recursion)
+    go :: FlaggedDeps QPN -> [Dep QPN] -- Type annotation necessary (polymorphic recursion)
     go deps = do
       d <- deps
       case d of
-        Simple _ _           -> mzero
-        Flagged qfn' _ td fd
+        SimpleDep _ _        -> mzero
+        SimpleConstraint _ _ -> mzero
+        Flagged (FlagDeps (PkgFlagInfo qfn' _) td fd)
           | v == F qfn'      -> L.map (resetVar v) $
                                 if b then extractDeps fa sa td else extractDeps fa sa fd
           | otherwise        -> case M.lookup qfn' fa of
                                   Nothing    -> mzero
                                   Just True  -> go td
                                   Just False -> go fd
-        Stanza qsn' td
+        Flagged (FlagDeps (StanzaInfo qsn') td fd)
           | v == S qsn'      -> L.map (resetVar v) $
                                 if b then extractDeps fa sa td else []
           | otherwise        -> case M.lookup qsn' sa of
                                   Nothing    -> mzero
                                   Just True  -> go td
-                                  Just False -> []
+                                  Just False -> go fd
 
 -- | Interface.
 validateTree :: CompilerInfo -> Index -> PkgConfigDb -> Tree d c -> Tree d c

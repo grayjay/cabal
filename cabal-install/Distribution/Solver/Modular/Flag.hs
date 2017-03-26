@@ -2,7 +2,7 @@
 module Distribution.Solver.Modular.Flag
     ( FInfo(..)
     , Flag
-    , FlagInfo
+    , FInfoMap
     , FN(..)
     , QFN
     , QSN
@@ -46,7 +46,7 @@ data FInfo = FInfo { fdefault :: Bool, fmanual :: FlagType, fweak :: WeakOrTrivi
   deriving (Eq, Show)
 
 -- | Flag defaults.
-type FlagInfo = Map Flag FInfo
+type FInfoMap = Map Flag FInfo
 
 -- | Qualified flag name.
 type QFN = FN QPN

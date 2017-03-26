@@ -28,7 +28,6 @@ import qualified Distribution.Solver.Modular.WeightedPSQ as W
 
 import Distribution.Solver.Types.OptionalStanza
 import Distribution.Solver.Types.PackagePath
-import Distribution.Solver.Types.ComponentDeps (Component)
 import Distribution.Types.GenericPackageDescription (unFlagName)
 
 {-------------------------------------------------------------------------------
@@ -149,7 +148,7 @@ conflict = lift' . Left
 execUpdateState :: UpdateState () -> ValidateState -> Either Conflict ValidateState
 execUpdateState = execStateT . unUpdateState
 
-pickPOption :: QPN -> POption -> FlaggedDeps Component QPN -> UpdateState ()
+pickPOption :: QPN -> POption -> FlaggedDeps QPN -> UpdateState ()
 pickPOption qpn (POption i Nothing)    _deps = pickConcrete qpn i
 pickPOption qpn (POption i (Just pp'))  deps = pickLink     qpn i pp' deps
 
@@ -167,7 +166,7 @@ pickConcrete qpn@(Q pp _) i = do
       Just lg ->
         makeCanonical lg qpn i
 
-pickLink :: QPN -> I -> PackagePath -> FlaggedDeps Component QPN -> UpdateState ()
+pickLink :: QPN -> I -> PackagePath -> FlaggedDeps QPN -> UpdateState ()
 pickLink qpn@(Q _pp pn) i pp' deps = do
     vs <- get
 
@@ -223,7 +222,7 @@ makeCanonical lg qpn@(Q pp _) i =
 -- because having the direct dependencies in a link group means that we must
 -- have already made or will make sooner or later a link choice for one of these
 -- as well, and cover their dependencies at that point.
-linkDeps :: QPN -> [Var QPN] -> FlaggedDeps Component QPN -> UpdateState ()
+linkDeps :: QPN -> [Var QPN] -> FlaggedDeps QPN -> UpdateState ()
 linkDeps target = \blame deps -> do
     -- linkDeps is called in two places: when we first link one package to
     -- another, and when we discover more dependencies of an already linked
@@ -233,37 +232,34 @@ linkDeps target = \blame deps -> do
     rdeps <- requalify deps
     go blame deps rdeps
   where
-    go :: [Var QPN] -> FlaggedDeps Component QPN -> FlaggedDeps Component QPN -> UpdateState ()
+    go :: [Var QPN] -> FlaggedDeps QPN -> FlaggedDeps QPN -> UpdateState ()
     go = zipWithM_ . go1
 
-    go1 :: [Var QPN] -> FlaggedDep Component QPN -> FlaggedDep Component QPN -> UpdateState ()
+    go1 :: [Var QPN] -> FlaggedDep QPN -> FlaggedDep QPN -> UpdateState ()
     go1 blame dep rdep = case (dep, rdep) of
-      (Simple (Dep _ qpn _) _, ~(Simple (Dep _ qpn' _) _)) -> do
+      (SimpleDep (PackageDep _ qpn _) _, ~(SimpleDep (PackageDep _ qpn' _) _)) -> do
         vs <- get
         let lg   = M.findWithDefault (lgSingleton qpn  Nothing) qpn  $ vsLinks vs
             lg'  = M.findWithDefault (lgSingleton qpn' Nothing) qpn' $ vsLinks vs
         lg'' <- lift' $ lgMerge blame lg lg'
         updateLinkGroup lg''
-      (Flagged fn _ t f, ~(Flagged _ _ t' f')) -> do
+      (Flagged (FlagDeps (PkgFlagInfo fn _) t f), ~(Flagged (FlagDeps (PkgFlagInfo _ _) t' f'))) -> do
         vs <- get
         case M.lookup fn (vsFlags vs) of
           Nothing    -> return () -- flag assignment not yet known
           Just True  -> go (F fn:blame) t t'
           Just False -> go (F fn:blame) f f'
-      (Stanza sn t, ~(Stanza _ t')) -> do
+      (Flagged (FlagDeps (StanzaInfo sn) t f), ~(Flagged (FlagDeps (StanzaInfo _) t' f'))) -> do
         vs <- get
         case M.lookup sn (vsStanzas vs) of
           Nothing    -> return () -- stanza assignment not yet known
           Just True  -> go (S sn:blame) t t'
-          Just False -> return () -- stanza not enabled; no new deps
-    -- For extensions and language dependencies, there is nothing to do.
+          Just False -> go (S sn:blame) f f'
+    -- For constraints, there is nothing to do.
     -- No choice is involved, just checking, so there is nothing to link.
-    -- The same goes for for pkg-config constraints.
-      (Simple (Ext  _)   _, _) -> return ()
-      (Simple (Lang _)   _, _) -> return ()
-      (Simple (Pkg  _ _) _, _) -> return ()
+      (SimpleConstraint _   _, _) -> return ()
 
-    requalify :: FlaggedDeps Component QPN -> UpdateState (FlaggedDeps Component QPN)
+    requalify :: FlaggedDeps QPN -> UpdateState (FlaggedDeps QPN)
     requalify deps = do
       vs <- get
       return $ qualifyDeps (vsQualifyOptions vs) target (unqualifyDeps deps)
@@ -298,20 +294,21 @@ linkNewDeps var b = do
         linkedTo                = S.delete pp (lgMembers lg)
     forM_ (S.toList linkedTo) $ \pp' -> linkDeps (Q pp' pn) (P qpn : parents) newDeps
   where
-    findNewDeps :: ValidateState -> FlaggedDeps comp QPN -> ([Var QPN], FlaggedDeps Component QPN)
+    findNewDeps :: ValidateState -> FlaggedDeps QPN -> ([Var QPN], FlaggedDeps QPN)
     findNewDeps vs = concatMapUnzip (findNewDeps' vs)
 
-    findNewDeps' :: ValidateState -> FlaggedDep comp QPN -> ([Var QPN], FlaggedDeps Component QPN)
-    findNewDeps' _  (Simple _ _)        = ([], [])
-    findNewDeps' vs (Flagged qfn _ t f) =
+    findNewDeps' :: ValidateState -> FlaggedDep QPN -> ([Var QPN], FlaggedDeps QPN)
+    findNewDeps' _  (SimpleDep _ _)        = ([], [])
+    findNewDeps' _  (SimpleConstraint _ _) = ([], [])
+    findNewDeps' vs (Flagged (FlagDeps (PkgFlagInfo qfn _) t f)) =
       case (F qfn == var, M.lookup qfn (vsFlags vs)) of
         (True, _)    -> ([F qfn], if b then t else f)
         (_, Nothing) -> ([], []) -- not yet known
         (_, Just b') -> let (parents, deps) = findNewDeps vs (if b' then t else f)
                         in (F qfn:parents, deps)
-    findNewDeps' vs (Stanza qsn t) =
+    findNewDeps' vs (Flagged (FlagDeps (StanzaInfo qsn) t f)) =
       case (S qsn == var, M.lookup qsn (vsStanzas vs)) of
-        (True, _)    -> ([S qsn], if b then t else [])
+        (True, _)    -> ([S qsn], if b then t else f)
         (_, Nothing) -> ([], []) -- not yet known
         (_, Just b') -> let (parents, deps) = findNewDeps vs (if b' then t else [])
                         in (S qsn:parents, deps)

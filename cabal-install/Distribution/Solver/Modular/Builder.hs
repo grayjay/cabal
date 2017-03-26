@@ -29,7 +29,6 @@ import qualified Distribution.Solver.Modular.PSQ as P
 import Distribution.Solver.Modular.Tree
 import qualified Distribution.Solver.Modular.WeightedPSQ as W
 
-import Distribution.Solver.Types.ComponentDeps (Component)
 import Distribution.Solver.Types.PackagePath
 import Distribution.Solver.Types.Settings
 
@@ -43,11 +42,11 @@ data Linker a = Linker {
 
 -- | The state needed to build the search tree without creating any linked nodes.
 data BuildState = BS {
-  index :: Index,                -- ^ information about packages and their dependencies
-  rdeps :: RevDepMap,            -- ^ set of all package goals, completed and open, with reverse dependencies
-  open  :: PSQ (OpenGoal ()) (), -- ^ set of still open goals (flag and package goals)
-  next  :: BuildType,            -- ^ kind of node to generate next
-  qualifyOptions :: QualifyOptions -- ^ qualification options
+  index :: Index,                     -- ^ information about packages and their dependencies
+  rdeps :: RevDepMap,                 -- ^ set of all package goals, completed and open, with reverse dependencies
+  open  :: PSQ OpenDependencyGoal (), -- ^ set of still open goals (flag and package goals)
+  next  :: BuildType,                 -- ^ kind of node to generate next
+  qualifyOptions :: QualifyOptions    -- ^ qualification options
 }
 
 -- | Map of available linking targets.
@@ -57,41 +56,36 @@ type LinkingState = Map (PN, I) [PackagePath]
 --
 -- We also adjust the map of overall goals, and keep track of the
 -- reverse dependencies of each of the goals.
-extendOpen :: QPN -> [OpenGoal Component] -> BuildState -> BuildState
+extendOpen :: QPN -> [OpenGoal] -> BuildState -> BuildState
 extendOpen qpn' gs s@(BS { rdeps = gs', open = o' }) = go gs' o' gs
   where
-    go :: RevDepMap -> PSQ (OpenGoal ()) () -> [OpenGoal Component] -> BuildState
+    go :: RevDepMap -> PSQ OpenDependencyGoal () -> [OpenGoal] -> BuildState
     go g o []                                               = s { rdeps = g, open = o }
-    go g o (ng@(OpenGoal (Flagged _ _ _ _)      _gr) : ngs) = go g (cons' ng () o) ngs
+    go g o ((OpenGoal (Flagged fd@(FlagDeps _ _ _))      gr) : ngs) = go g (P.cons (FlagGoal fd gr) () o) ngs
       -- Note: for 'Flagged' goals, we always insert, so later additions win.
       -- This is important, because in general, if a goal is inserted twice,
       -- the later addition will have better dependency information.
-    go g o (ng@(OpenGoal (Stanza  _   _  )      _gr) : ngs) = go g (cons' ng () o) ngs
-    go g o (ng@(OpenGoal (Simple (Dep _ qpn _) c) _gr) : ngs)
+    go g o ((OpenGoal (SimpleDep (PackageDep _ qpn _) c) gr) : ngs)
       | qpn == qpn'       = go                            g               o  ngs
           -- we ignore self-dependencies at this point; TODO: more care may be needed
       | qpn `M.member` g  = go (M.adjust (addIfAbsent (c, qpn')) qpn g)   o  ngs
-      | otherwise         = go (M.insert qpn [(c, qpn')]  g) (cons' ng () o) ngs
+      | otherwise         = go (M.insert qpn [(c, qpn')]  g) (P.cons (PackageGoal qpn gr) () o) ngs
           -- code above is correct; insert/adjust have different arg order
-    go g o (   (OpenGoal (Simple (Ext _ext ) _) _gr) : ngs) = go g o ngs
-    go g o (   (OpenGoal (Simple (Lang _lang)_) _gr) : ngs) = go g o ngs
-    go g o (   (OpenGoal (Simple (Pkg _pn _vr)_) _gr) : ngs)= go g o ngs
-
-    cons' = P.cons . forgetCompOpenGoal
+    go g o (   (OpenGoal (SimpleConstraint _ _) _gr) : ngs) = go g o ngs
 
     addIfAbsent :: Eq a => a -> [a] -> [a]
     addIfAbsent x xs = if x `elem` xs then xs else x : xs
 
 -- | Given the current scope, qualify all the package names in the given set of
 -- dependencies and then extend the set of open goals accordingly.
-scopedExtendOpen :: QPN -> I -> QGoalReason -> FlaggedDeps Component PN -> FlagInfo ->
+scopedExtendOpen :: QPN -> I -> QGoalReason -> FlaggedDeps PN -> FInfoMap ->
                     BuildState -> BuildState
 scopedExtendOpen qpn i gr fdeps fdefs s = extendOpen qpn gs s
   where
     -- Qualify all package names
     qfdeps = qualifyDeps (qualifyOptions s) qpn fdeps
     -- Introduce all package flags
-    qfdefs = L.map (\ (fn, b) -> Flagged (FN (PI qpn i) fn) b [] []) $ M.toList fdefs
+    qfdefs = L.map (\ (fn, b) -> Flagged (FlagDeps (PkgFlagInfo (FN (PI qpn i) fn) b) [] [])) $ M.toList fdefs
     -- Combine new package and flag goals
     gs     = L.map (flip OpenGoal gr) (qfdefs ++ qfdeps)
     -- NOTE:
@@ -112,10 +106,9 @@ scopedExtendOpen qpn i gr fdeps fdefs s = extendOpen qpn gs s
 
 -- | Datatype that encodes what to build next
 data BuildType =
-    Goals                                  -- ^ build a goal choice node
-  | OneGoal (OpenGoal ())                  -- ^ build a node for this goal
+    Goals                             -- ^ build a goal choice node
+  | OneGoal OpenDependencyGoal        -- ^ build a node for this goal
   | Instance QPN I PInfo QGoalReason  -- ^ build a tree for a concrete instance
-  deriving Show
 
 build :: Linker BuildState -> Tree () QGoalReason
 build = ana go
@@ -139,13 +132,7 @@ addChildren bs@(BS { rdeps = rdm, open = gs, next = Goals })
 --
 -- For a package, we look up the instances available in the global info,
 -- and then handle each instance in turn.
-addChildren    (BS { index = _  , next = OneGoal (OpenGoal (Simple (Ext _             ) _) _ ) }) =
-  error "Distribution.Solver.Modular.Builder: addChildren called with Ext goal"
-addChildren    (BS { index = _  , next = OneGoal (OpenGoal (Simple (Lang _            ) _) _ ) }) =
-  error "Distribution.Solver.Modular.Builder: addChildren called with Lang goal"
-addChildren    (BS { index = _  , next = OneGoal (OpenGoal (Simple (Pkg _ _          ) _) _ ) }) =
-  error "Distribution.Solver.Modular.Builder: addChildren called with Pkg goal"
-addChildren bs@(BS { rdeps = rdm, index = idx, next = OneGoal (OpenGoal (Simple (Dep _ qpn@(Q _ pn) _) _) gr) }) =
+addChildren bs@(BS { rdeps = rdm, index = idx, next = OneGoal (PackageGoal qpn@(Q _ pn) gr) }) =
   -- If the package does not exist in the index, we construct an emty PChoiceF node for it
   -- After all, we have no choices here. Alternatively, we could immediately construct
   -- a Fail node here, but that would complicate the construction of conflict sets.
@@ -160,7 +147,7 @@ addChildren bs@(BS { rdeps = rdm, index = idx, next = OneGoal (OpenGoal (Simple 
 
 -- For a flag, we create only two subtrees, and we create them in the order
 -- that is indicated by the flag default.
-addChildren bs@(BS { rdeps = rdm, next = OneGoal (OpenGoal (Flagged qfn@(FN (PI qpn _) _) (FInfo b m w) t f) gr) }) =
+addChildren bs@(BS { rdeps = rdm, next = OneGoal (FlagGoal (FlagDeps (PkgFlagInfo qfn@(FN (PI qpn _) _) (FInfo b m w)) t f) gr) }) =
   FChoiceF qfn rdm gr weak m b (W.fromList
     [([if b then 0 else 1], True,  (extendOpen qpn (L.map (flip OpenGoal (FDependency qfn True )) t) bs) { next = Goals }),
      ([if b then 1 else 0], False, (extendOpen qpn (L.map (flip OpenGoal (FDependency qfn False)) f) bs) { next = Goals })])
@@ -173,9 +160,9 @@ addChildren bs@(BS { rdeps = rdm, next = OneGoal (OpenGoal (Flagged qfn@(FN (PI 
 -- the stanza by replacing the False branch with failure) or preferences
 -- (try enabling the stanza if possible by moving the True branch first).
 
-addChildren bs@(BS { rdeps = rdm, next = OneGoal (OpenGoal (Stanza qsn@(SN (PI qpn _) _) t) gr) }) =
+addChildren bs@(BS { rdeps = rdm, next = OneGoal (FlagGoal (FlagDeps (StanzaInfo qsn@(SN (PI qpn _) _)) t f) gr) }) =
   SChoiceF qsn rdm gr trivial (W.fromList
-    [([0], False,                                                             bs  { next = Goals }),
+    [([0], False, (extendOpen qpn (L.map (flip OpenGoal (SDependency qsn)) f) bs) { next = Goals }),
      ([1], True,  (extendOpen qpn (L.map (flip OpenGoal (SDependency qsn)) t) bs) { next = Goals })])
   where
     trivial = WeakOrTrivial (L.null t)
@@ -265,9 +252,28 @@ buildTree idx (IndependentGoals ind) igs =
       , linkingState = M.empty
       }
   where
-    -- Should a top-level goal allowed to be an executable style
-    -- dependency? Well, I don't think it would make much difference
-    topLevelGoal qpn = OpenGoal (Simple (Dep False {- not exe -} qpn (Constrained [])) ()) UserGoal
+    topLevelGoal qpn = PackageGoal qpn UserGoal
 
     qpns | ind       = makeIndependent igs
          | otherwise = L.map (Q (PackagePath DefaultNamespace QualToplevel)) igs
+
+{-------------------------------------------------------------------------------
+  Goals
+-------------------------------------------------------------------------------}
+
+-- | For open goals as they occur during the build phase, we need to store
+-- additional information about flags.
+data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReason
+
+-- | Like an OpenGoal, except that it always introduces at least one new
+-- dependency. FlagGoal introduces a flag, and PackageGoal introduces a package.
+data OpenDependencyGoal =
+    FlagGoal (FlagDeps QPN) QGoalReason
+  | PackageGoal QPN QGoalReason
+
+-- | Closes a goal, i.e., removes all the extraneous information that we
+-- need only during the build phase.
+close :: OpenDependencyGoal -> Goal QPN
+close (FlagGoal (FlagDeps (PkgFlagInfo qfn _) _ _ ) gr) = Goal (F qfn) gr
+close (FlagGoal (FlagDeps (StanzaInfo qsn)    _ _ ) gr) = Goal (S qsn) gr
+close (PackageGoal qpn gr)                              = Goal (P qpn) gr
