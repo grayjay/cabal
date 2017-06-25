@@ -11,6 +11,7 @@
 module Distribution.Solver.Modular.ConflictSet (
     ConflictSet -- opaque
   , ConflictMap
+  , Conflict(..)
 #ifdef DEBUG_CONFLICT_SETS
   , conflictSetOrigin
 #endif
@@ -26,19 +27,21 @@ module Distribution.Solver.Modular.ConflictSet (
   , delete
   , empty
   , singleton
+  , singletonWithConflict
   , size
   , member
+  , lookup
   , filter
   , fromList
   ) where
 
-import Prelude hiding (filter)
+import Prelude hiding (filter, lookup)
 import Data.List (intercalate, sortBy)
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Function (on)
-import qualified Data.Set as S
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 #ifdef DEBUG_CONFLICT_SETS
 import Data.Tree
@@ -46,6 +49,7 @@ import GHC.Stack
 #endif
 
 import Distribution.Solver.Modular.Var
+import Distribution.Solver.Modular.Version
 import Distribution.Solver.Types.PackagePath
 
 -- | The set of variables involved in a solver conflict
@@ -54,7 +58,7 @@ import Distribution.Solver.Types.PackagePath
 -- kept abstract.
 data ConflictSet = CS {
     -- | The set of variables involved on the conflict
-    conflictSetToSet :: !(Set (Var QPN))
+    conflictSetToMap :: !(Map (Var QPN) (Set Conflict))
 
 #ifdef DEBUG_CONFLICT_SETS
     -- | The origin of the conflict set
@@ -72,11 +76,26 @@ data ConflictSet = CS {
   }
   deriving (Show)
 
+-- | More detailed information about how a conflict set variable caused a
+-- conflict. This information can be used to determine whether a second value
+-- for that variable will lead to the same conflict.
+data Conflict =
+    -- | The variable introduced a problematic package goal.
+    GoalConflict QPN
+
+    -- | A constraint in the package represented by the variable excluded this
+    -- package and version.
+  | VersionConflict QPN Ver
+
+    -- | Any other conflict.
+  | UnknownConflict
+  deriving (Eq, Ord, Show)
+
 instance Eq ConflictSet where
-  (==) = (==) `on` conflictSetToSet
+  (==) = (==) `on` conflictSetToMap
 
 instance Ord ConflictSet where
-  compare = compare `on` conflictSetToSet
+  compare = compare `on` conflictSetToMap
 
 showConflictSet :: ConflictSet -> String
 showConflictSet = intercalate ", " . map showVar . toList
@@ -102,10 +121,10 @@ showCS showCount cm =
 -------------------------------------------------------------------------------}
 
 toSet :: ConflictSet -> Set (Var QPN)
-toSet = conflictSetToSet
+toSet = M.keysSet . conflictSetToMap
 
 toList :: ConflictSet -> [Var QPN]
-toList = S.toList . conflictSetToSet
+toList = M.keys . conflictSetToMap
 
 union ::
 #ifdef DEBUG_CONFLICT_SETS
@@ -113,7 +132,7 @@ union ::
 #endif
   ConflictSet -> ConflictSet -> ConflictSet
 union cs cs' = CS {
-      conflictSetToSet = S.union (conflictSetToSet cs) (conflictSetToSet cs')
+      conflictSetToMap = M.unionWith S.union (conflictSetToMap cs) (conflictSetToMap cs')
 #ifdef DEBUG_CONFLICT_SETS
     , conflictSetOrigin = Node ?loc (map conflictSetOrigin [cs, cs'])
 #endif
@@ -125,7 +144,7 @@ unions ::
 #endif
   [ConflictSet] -> ConflictSet
 unions css = CS {
-      conflictSetToSet = S.unions (map conflictSetToSet css)
+      conflictSetToMap = M.unionsWith S.union (map conflictSetToMap css)
 #ifdef DEBUG_CONFLICT_SETS
     , conflictSetOrigin = Node ?loc (map conflictSetOrigin css)
 #endif
@@ -137,7 +156,7 @@ insert ::
 #endif
   Var QPN -> ConflictSet -> ConflictSet
 insert var cs = CS {
-      conflictSetToSet = S.insert var (conflictSetToSet cs)
+      conflictSetToMap = M.insert var (S.singleton UnknownConflict) (conflictSetToMap cs)
 #ifdef DEBUG_CONFLICT_SETS
     , conflictSetOrigin = Node ?loc [conflictSetOrigin cs]
 #endif
@@ -145,7 +164,7 @@ insert var cs = CS {
 
 delete :: Var QPN -> ConflictSet -> ConflictSet
 delete var cs = CS {
-      conflictSetToSet = S.delete var (conflictSetToSet cs)
+      conflictSetToMap = M.delete var (conflictSetToMap cs)
     }
 
 empty ::
@@ -154,7 +173,7 @@ empty ::
 #endif
   ConflictSet
 empty = CS {
-      conflictSetToSet = S.empty
+      conflictSetToMap = M.empty
 #ifdef DEBUG_CONFLICT_SETS
     , conflictSetOrigin = Node ?loc []
 #endif
@@ -166,17 +185,32 @@ singleton ::
 #endif
   Var QPN -> ConflictSet
 singleton var = CS {
-      conflictSetToSet = S.singleton var
+      conflictSetToMap = M.singleton var (S.singleton UnknownConflict)
+#ifdef DEBUG_CONFLICT_SETS
+    , conflictSetOrigin = Node ?loc []
+#endif
+    }
+
+singletonWithConflict ::
+#ifdef DEBUG_CONFLICT_SETS
+  (?loc :: CallStack) =>
+#endif
+  Var QPN -> Conflict -> ConflictSet
+singletonWithConflict var conflict = CS {
+      conflictSetToMap = M.singleton var (S.singleton conflict)
 #ifdef DEBUG_CONFLICT_SETS
     , conflictSetOrigin = Node ?loc []
 #endif
     }
 
 size :: ConflictSet -> Int
-size = S.size . conflictSetToSet
+size = M.size . conflictSetToMap
 
 member :: Var QPN -> ConflictSet -> Bool
-member var = S.member var . conflictSetToSet
+member var = M.member var . conflictSetToMap
+
+lookup :: Var QPN -> ConflictSet -> Maybe (Set Conflict)
+lookup var = M.lookup var . conflictSetToMap
 
 filter ::
 #ifdef DEBUG_CONFLICT_SETS
@@ -184,7 +218,7 @@ filter ::
 #endif
   (Var QPN -> Bool) -> ConflictSet -> ConflictSet
 filter p cs = CS {
-      conflictSetToSet = S.filter p (conflictSetToSet cs)
+      conflictSetToMap = M.filterWithKey (const . p) (conflictSetToMap cs)
 #ifdef DEBUG_CONFLICT_SETS
     , conflictSetOrigin = Node ?loc [conflictSetOrigin cs]
 #endif
@@ -196,7 +230,7 @@ fromList ::
 #endif
   [Var QPN] -> ConflictSet
 fromList vars = CS {
-      conflictSetToSet = S.fromList vars
+      conflictSetToMap = M.fromList [(var, S.singleton UnknownConflict) | var <- vars]
 #ifdef DEBUG_CONFLICT_SETS
     , conflictSetOrigin = Node ?loc []
 #endif

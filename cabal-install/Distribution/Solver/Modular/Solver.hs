@@ -105,6 +105,7 @@ solve sc cinfo idx pkgConfigDB userPrefs userConstraints userGoals =
     explorePhase     = backjumpAndExplore (maxBackjumps sc)
                                           (enableBackjumping sc)
                                           (countConflicts sc)
+                                          idx
     detectCycles     = traceTree "cycles.json" id . detectCyclesPhase
     heuristicsPhase  =
       let heuristicsTree = traceTree "heuristics.json" id

@@ -28,6 +28,7 @@ data Message =
   | TryF QFN Bool
   | TryS QSN Bool
   | Next (Goal QPN)
+  | Skip QPN POption
   | Success
   | Failure ConflictSet FailReason
 
@@ -63,6 +64,7 @@ showMessages = go 0
     go !l (Step (TryS qsn b)             ms) = (atLevel l $ "trying: " ++ showQSNBool qsn b) (go l ms)
     go !l (Step (Next (Goal (P qpn) gr)) ms) = (atLevel l $ showPackageGoal qpn gr) (go l ms)
     go !l (Step (Next _)                 ms) = go l     ms -- ignore flag goals in the log
+    go !l (Step (Skip qpn i)             ms) = (atLevel l $ "skipping: " ++ showQPNPOpt qpn i) (go l ms)
     go !l (Step (Success)                ms) = (atLevel l $ "done") (go l ms)
     go !l (Step (Failure c fr)           ms) = (atLevel l $ showFailure c fr) (go l ms)
 

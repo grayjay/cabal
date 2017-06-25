@@ -33,7 +33,9 @@ module Distribution.Solver.Modular.Dependency (
   , goalToVar
   , varToConflictSet
   , goalReasonToCS
+  , goalReasonToCSWithConflict
   , dependencyReasonToCS
+  , dependencyReasonToCSWithConflict
   ) where
 
 import Prelude ()
@@ -282,6 +284,13 @@ goalReasonToCS :: GoalReason QPN -> ConflictSet
 goalReasonToCS UserGoal            = CS.empty
 goalReasonToCS (DependencyGoal dr) = dependencyReasonToCS dr
 
+goalReasonToCSWithConflict :: QPN -> GoalReason QPN -> ConflictSet
+goalReasonToCSWithConflict _ UserGoal = CS.empty
+goalReasonToCSWithConflict goalQpn (DependencyGoal dr@(DependencyReason qpn flags stanzas))
+  | M.null flags && S.null stanzas =
+      CS.singletonWithConflict (P qpn) $ CS.GoalConflict goalQpn
+  | otherwise = dependencyReasonToCS dr
+
 -- | This function returns the solver variables responsible for the dependency.
 -- It drops the flag and stanza values, which are only needed for log messages.
 dependencyReasonToCS :: DependencyReason QPN -> ConflictSet
@@ -296,3 +305,9 @@ dependencyReasonToCS (DependencyReason qpn flags stanzas) =
 
     stanzaToVar :: Stanza -> Var QPN
     stanzaToVar = S . SN qpn
+
+dependencyReasonToCSWithConflict :: QPN -> Ver -> DependencyReason QPN -> ConflictSet
+dependencyReasonToCSWithConflict depQpn v dr@(DependencyReason qpn flags stanzas)
+  | M.null flags && S.null stanzas =
+    CS.singletonWithConflict (P qpn) $ CS.VersionConflict depQpn v
+  | otherwise = dependencyReasonToCS dr

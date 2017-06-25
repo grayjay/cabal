@@ -454,7 +454,7 @@ merge (MergedDepFixed comp1 vs1 i1) (PkgDep vs2 (PkgComponent p comp2) ci@(Fixed
 merge (MergedDepFixed comp1 vs1 i@(I v _)) (PkgDep vs2 (PkgComponent p comp2) ci@(Constrained vr))
   | checkVR vr v = Right $ MergedDepFixed comp1 vs1 i
   | otherwise    =
-      Left ( (CS.union `on` dependencyReasonToCS) vs1 vs2
+      Left ( dependencyReasonToCS vs1 `CS.union` dependencyReasonToCSWithConflict p v vs2
            , ( ConflictingDep vs1 (PkgComponent p comp1) (Fixed i)
              , ConflictingDep vs2 (PkgComponent p comp2) ci ) )
 
@@ -466,7 +466,7 @@ merge (MergedDepConstrained vrOrigins) (PkgDep vs2 (PkgComponent p comp2) ci@(Fi
     go ((vr, comp1, vs1) : vros)
        | checkVR vr v = go vros
        | otherwise    =
-           Left ( (CS.union `on` dependencyReasonToCS) vs1 vs2
+           Left ( dependencyReasonToCSWithConflict p v vs1 `CS.union` dependencyReasonToCS vs2
                 , ( ConflictingDep vs1 (PkgComponent p comp1) (Constrained vr)
                   , ConflictingDep vs2 (PkgComponent p comp2) ci ) )
 
