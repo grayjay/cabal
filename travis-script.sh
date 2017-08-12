@@ -167,6 +167,12 @@ timed ${CABAL_INSTALL_BDIR}/build/cabal/cabal update
 
 (cd cabal-install && timed cabal check) || exit $?
 
+timed cabal new-build $jobs solver-benchmarks:unit-tests
+
+timed ${SOLVER_BENCHMARKS_BDIR}/c/unit-tests/build/unit-tests/unit-tests $TEST_OPTIONS
+
+(cd solver-benchmarks && timed cabal check) || exit $?
+
 unset CABAL_BUILDDIR
 
 # Check what we got
