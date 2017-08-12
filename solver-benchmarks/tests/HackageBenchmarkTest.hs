@@ -33,13 +33,13 @@ tests = testGroup "unit tests" [
             combineTrialResults [NoInstallPlan, NoInstallPlan] @?= NoInstallPlan
 
       , testCase "take one of repeated successes" $
-            combineTrialResults [Success, Success] @?= Success
+            combineTrialResults [Solution, Solution] @?= Solution
 
       , testCase "timeout overrides other results" $
-            combineTrialResults [Success, Timeout, Success] @?= Timeout
+            combineTrialResults [Solution, Timeout, Solution] @?= Timeout
 
       , testCase "convert unexpected difference to Unknown, even with timeout" $
-            combineTrialResults [Success, Timeout, NoInstallPlan] @?= Unknown
+            combineTrialResults [Solution, Timeout, NoInstallPlan] @?= Unknown
     ]
 
   , testGroup "isInterestingResultPair" [
@@ -57,13 +57,13 @@ tests = testGroup "unit tests" [
             not $ isInterestingResultPair NoInstallPlan NoInstallPlan
 
       , testCase "ignore success" $ assert $
-            not $ isInterestingResultPair Success Success
+            not $ isInterestingResultPair Solution Solution
     ]
 
   , testGroup "shouldSkipAfterTrial1" [
 
         testCase "rerun when min difference is zero" $ assert $
-            not $ shouldSkipAfterTrial1 0 1.0 1.0 Success Success
+            not $ shouldSkipAfterTrial1 0 1.0 1.0 Solution Solution
 
       , testCase "rerun when min difference is zero, even with timeout" $ assert $
             not $ shouldSkipAfterTrial1 0 1.0 1.0 Timeout Timeout
@@ -72,15 +72,15 @@ tests = testGroup "unit tests" [
             shouldSkipAfterTrial1 0.000001 89.9 92.0 Timeout Timeout
 
       , testCase "skip when times are too close - 1" $ assert $
-                  shouldSkipAfterTrial1 10 1.0 0.91  Success Success
+                  shouldSkipAfterTrial1 10 1.0 0.91  Solution Solution
 
       , testCase "skip when times are too close - 2" $ assert $
-                  shouldSkipAfterTrial1 10 1.0 1.09  Success Success
+                  shouldSkipAfterTrial1 10 1.0 1.09  Solution Solution
 
       , testCase "rerun when times aren't too close - 1" $ assert $
-            not $ shouldSkipAfterTrial1 10 1.0 0.905 Success Success
+            not $ shouldSkipAfterTrial1 10 1.0 0.905 Solution Solution
 
       , testCase "rerun when times aren't too close - 2" $ assert $
-            not $ shouldSkipAfterTrial1 10 1.0 1.1   Success Success
+            not $ shouldSkipAfterTrial1 10 1.0 1.1   Solution Solution
     ]
   ]

@@ -20,15 +20,15 @@ import Data.Monoid ((<>))
 import Data.String (fromString)
 import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
 import qualified Data.Vector.Unboxed as V
-import qualified Options.Applicative as O
+import Options.Applicative
 import Statistics.Sample (mean, stdDev)
 import Statistics.Test.MannWhitneyU (PositionTest(..), TestResult(..), mannWhitneyUtest)
 import Statistics.Types (PValue, mkPValue)
-import System.Exit (ExitCode(..), die)
-import System.IO (BufferMode(LineBuffering), hSetBuffering, stdout)
+import System.Exit (ExitCode(..), exitFailure)
+import System.IO (BufferMode(LineBuffering), hPutStrLn, hSetBuffering, stderr, stdout)
 import System.Process ( StdStream(CreatePipe), CreateProcess(..), callProcess
                       , createProcess, readProcess, shell, waitForProcess )
-import Text.Printf (PrintfArg(..), printf)
+import Text.Printf (printf)
 
 import Distribution.Package (PackageName, mkPackageName, unPackageName)
 
@@ -49,7 +49,7 @@ data Args = Args {
 data CabalTrial = CabalTrial NominalDiffTime CabalResult
 
 data CabalResult
-  = Success
+  = Solution
   | NoInstallPlan
   | BackjumpLimit
   | PkgNotFound
@@ -60,7 +60,7 @@ data CabalResult
 hackageBenchmarkMain :: IO ()
 hackageBenchmarkMain = do
   hSetBuffering stdout LineBuffering
-  args@Args {..} <- O.execParser parserInfo
+  args@Args {..} <- execParser parserInfo
   checkArgs args
   printConfig args
   pkgs <- getPackages args
@@ -86,7 +86,8 @@ hackageBenchmarkMain = do
             putStrLn $
             printf "%-16s %-*s %-13s %-13s %10.3fs %10.3fs"
                    msgType nameColumnWidth (unPackageName pkg)
-                   result1 result2 time1 time2
+                   (show result1) (show result2)
+                   (diffTimeToDouble time1) (diffTimeToDouble time2)
 
     CabalTrial t1 r1 <- runCabal1 pkg
     CabalTrial t2 r2 <- runCabal2 pkg
@@ -121,13 +122,14 @@ hackageBenchmarkMain = do
       then putStrLn $
            printf "%-*s %-13s %-13s %10.3fs %10.3fs %10.3fs %10.3fs %10.3f"
                   nameColumnWidth (unPackageName pkg)
-                  result1 result2 mean1 mean2 stddev1 stddev2 speedup
+                  (show result1) (show result2) mean1 mean2 stddev1 stddev2 speedup
       else when (argPrintTrials || argPrintSkippedPackages) $
            putStrLn $
            printf "%-*s (not significant)" nameColumnWidth (unPackageName pkg)
   where
     checkArgs :: Args -> IO ()
     checkArgs Args {..} = do
+      let die msg = hPutStrLn stderr msg >> exitFailure
       unless (argTrials > 0) $ die "--trials must be greater than 0."
       unless (argMinRunTimeDifferenceToRerun >= 0) $
           die "--min-run-time-percentage-difference-to-rerun must be non-negative."
@@ -172,7 +174,7 @@ runCabal timeoutSeconds cabal flags pkg = do
   let exhaustiveMsg =
           "After searching the rest of the dependency tree exhaustively"
       result
-        | exitCode == ExitSuccess                                  = Success
+        | exitCode == ExitSuccess                                  = Solution
         | exitCode == ExitFailure 124                              = Timeout
         | fromString exhaustiveMsg `B.isInfixOf` err               = NoInstallPlan
         | fromString "Backjump limit reached" `B.isInfixOf` err    = BackjumpLimit
@@ -208,7 +210,7 @@ isInterestingResultPair r1 r2 = r1 /= r2 || not (isExpectedResult r1)
 
 -- Is this result expected in a benchmark run on all of Hackage?
 isExpectedResult :: CabalResult -> Bool
-isExpectedResult Success       = True
+isExpectedResult Solution      = True
 isExpectedResult NoInstallPlan = True
 isExpectedResult BackjumpLimit = True
 isExpectedResult Timeout       = True
@@ -236,75 +238,69 @@ timeEvent task = do
 diffTimeToDouble :: NominalDiffTime -> Double
 diffTimeToDouble = fromRational . toRational
 
-instance PrintfArg NominalDiffTime where
-  formatArg = formatArg . diffTimeToDouble
-
-instance PrintfArg CabalResult where
-  formatArg = formatArg . show
-
-parserInfo :: O.ParserInfo Args
-parserInfo = O.info (argParser O.<**> O.helper)
-     ( O.fullDesc
-    <> O.progDesc ("Find differences between two cabal commands when solving"
+parserInfo :: ParserInfo Args
+parserInfo = info (argParser <**> helper)
+     ( fullDesc
+    <> progDesc ("Find differences between two cabal commands when solving"
                    ++ " for all packages on Hackage.")
-    <> O.header "hackage-benchmark" )
+    <> header "hackage-benchmark" )
 
-argParser :: O.Parser Args
+argParser :: Parser Args
 argParser = Args
-    <$> O.strOption
-         ( O.long "cabal1"
-        <> O.metavar "PATH"
-        <> O.help "First cabal executable")
-    <*> O.strOption
-         ( O.long "cabal2"
-        <> O.metavar "PATH"
-        <> O.help "Second cabal executable")
-    <*> O.option (words <$> O.str)
-         ( O.long "cabal1-flags"
-        <> O.value []
-        <> O.metavar "FLAGS"
-        <> O.help "Extra flags for the first cabal executable")
-    <*> O.option (words <$> O.str)
-         ( O.long "cabal2-flags"
-        <> O.value []
-        <> O.metavar "FLAGS"
-        <> O.help "Extra flags for the second cabal executable")
-    <*> O.option (map mkPackageName . words <$> O.str)
-         ( O.long "packages"
-        <> O.value []
-        <> O.metavar "PACKAGES"
-        <> O.help ("Space separated list of packages to test, or all of Hackage"
+    <$> strOption
+         ( long "cabal1"
+        <> metavar "PATH"
+        <> help "First cabal executable")
+    <*> strOption
+         ( long "cabal2"
+        <> metavar "PATH"
+        <> help "Second cabal executable")
+    <*> option (words <$> str)
+         ( long "cabal1-flags"
+        <> value []
+        <> metavar "FLAGS"
+        <> help "Extra flags for the first cabal executable")
+    <*> option (words <$> str)
+         ( long "cabal2-flags"
+        <> value []
+        <> metavar "FLAGS"
+        <> help "Extra flags for the second cabal executable")
+    <*> option (map mkPackageName . words <$> str)
+         ( long "packages"
+        <> value []
+        <> metavar "PACKAGES"
+        <> help ("Space separated list of packages to test, or all of Hackage"
                    ++ " if unspecified"))
-    <*> O.option O.auto
-         ( O.long "min-run-time-percentage-difference-to-rerun"
-        <> O.showDefault
-        <> O.value 0.0
-        <> O.metavar "PERCENTAGE"
-        <> O.help ("Stop testing a package when the difference in run times in"
+    <*> option auto
+         ( long "min-run-time-percentage-difference-to-rerun"
+        <> showDefault
+        <> value 0.0
+        <> metavar "PERCENTAGE"
+        <> help ("Stop testing a package when the difference in run times in"
                    ++ " the first trial are within this percentage, in order to"
                    ++ " save time"))
-    <*> O.option O.auto
-         ( O.long "pvalue"
-        <> O.showDefault
-        <> O.value 0.05
-        <> O.metavar "DOUBLE"
-        <> O.help ("p-value used to determine whether to print the results for"
+    <*> option auto
+         ( long "pvalue"
+        <> showDefault
+        <> value 0.05
+        <> metavar "DOUBLE"
+        <> help ("p-value used to determine whether to print the results for"
                    ++ " each package"))
-    <*> O.option O.auto
-         ( O.long "trials"
-        <> O.showDefault
-        <> O.value 10
-        <> O.metavar "N"
-        <> O.help "Number of trials for each package")
-    <*> O.switch
-         ( O.long "print-trials"
-        <> O.help "Whether to include the results from individual trials in the output")
-    <*> O.switch
-         ( O.long "print-skipped-packages"
-        <> O.help "Whether to include skipped packages in the output")
-    <*> O.option O.auto
-         ( O.long "timeout"
-        <> O.showDefault
-        <> O.value 90
-        <> O.metavar "SECONDS"
-        <> O.help "Maximum time to run a cabal command, in seconds")
+    <*> option auto
+         ( long "trials"
+        <> showDefault
+        <> value 10
+        <> metavar "N"
+        <> help "Number of trials for each package")
+    <*> switch
+         ( long "print-trials"
+        <> help "Whether to include the results from individual trials in the output")
+    <*> switch
+         ( long "print-skipped-packages"
+        <> help "Whether to include skipped packages in the output")
+    <*> option auto
+         ( long "timeout"
+        <> showDefault
+        <> value 90
+        <> metavar "SECONDS"
+        <> help "Maximum time to run a cabal command, in seconds")
