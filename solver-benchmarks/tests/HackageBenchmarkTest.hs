@@ -9,19 +9,22 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "unit tests" [
 
-    testGroup "isSignificant" [
+    testGroup "isSignificantTimeDifference" [
 
-        testCase "detect shift in distribution" $ assert $
-            isSignificant (mkPValue 0.05) [1,2..7] [4,5..10]
+        testCase "detect increase in distribution" $ assert $
+            isSignificantTimeDifference (mkPValue 0.05) [1,2..7] [4,5..10]
+
+      , testCase "detect decrease in distribution" $ assert $
+            isSignificantTimeDifference (mkPValue 0.05) [1,2..7] [-2,-1..4]
 
       , testCase "ignore shift in distribution with high p-value" $ assert $
-            isSignificant (mkPValue 0.99) [1,2..7] [4,5..10]
+            isSignificantTimeDifference (mkPValue 0.99) [1,2..7] [4,5..10]
 
       , testCase "ignore same data" $ assert $
-            not $ isSignificant (mkPValue 0.05) [1,2..10] [1,2..10]
+            not $ isSignificantTimeDifference (mkPValue 0.05) [1,2..10] [1,2..10]
 
       , testCase "ignore outlier" $ assert $
-            not $ isSignificant (mkPValue 0.05) [1, 2, 1, 1, 1] [2, 1, 50, 1, 1]
+            not $ isSignificantTimeDifference (mkPValue 0.05) [1, 2, 1, 1, 1] [2, 1, 50, 1, 1]
       ]
 
   , testGroup "combineTrialResults" [
@@ -29,10 +32,10 @@ tests = testGroup "unit tests" [
         testCase "convert unexpected difference to Unknown" $
             combineTrialResults [NoInstallPlan, BackjumpLimit] @?= Unknown
 
-      , testCase "take one of repeated errors" $
+      , testCase "return one of identical errors" $
             combineTrialResults [NoInstallPlan, NoInstallPlan] @?= NoInstallPlan
 
-      , testCase "take one of repeated successes" $
+      , testCase "return one of identical successes" $
             combineTrialResults [Solution, Solution] @?= Solution
 
       , testCase "timeout overrides other results" $
@@ -42,45 +45,45 @@ tests = testGroup "unit tests" [
             combineTrialResults [Solution, Timeout, NoInstallPlan] @?= Unknown
     ]
 
-  , testGroup "isInterestingResultPair" [
+  , testGroup "isSignificantResult" [
 
-        testCase "rerun different results" $ assert $
-            isInterestingResultPair NoInstallPlan BackjumpLimit
+        testCase "different results are significant" $ assert $
+            isSignificantResult NoInstallPlan BackjumpLimit
 
-      , testCase "rerun unknown result" $ assert $
-            isInterestingResultPair Unknown Unknown
+      , testCase "unknown is significant" $ assert $
+            isSignificantResult Unknown Unknown
 
-      , testCase "rerun PkgNotFound" $ assert $
-            isInterestingResultPair PkgNotFound PkgNotFound
+      , testCase "PkgNotFound is significant" $ assert $
+            isSignificantResult PkgNotFound PkgNotFound
 
-      , testCase "ignore same expected error" $ assert $
-            not $ isInterestingResultPair NoInstallPlan NoInstallPlan
+      , testCase "same expected error is not significant" $ assert $
+            not $ isSignificantResult NoInstallPlan NoInstallPlan
 
-      , testCase "ignore success" $ assert $
-            not $ isInterestingResultPair Solution Solution
+      , testCase "success is not significant" $ assert $
+            not $ isSignificantResult Solution Solution
     ]
 
-  , testGroup "shouldSkipAfterTrial1" [
+  , testGroup "shouldContinueAfterFirstTrial" [
 
         testCase "rerun when min difference is zero" $ assert $
-            not $ shouldSkipAfterTrial1 0 1.0 1.0 Solution Solution
+                  shouldContinueAfterFirstTrial 0 1.0 1.0 Solution Solution
 
       , testCase "rerun when min difference is zero, even with timeout" $ assert $
-            not $ shouldSkipAfterTrial1 0 1.0 1.0 Timeout Timeout
+                  shouldContinueAfterFirstTrial 0 1.0 1.0 Timeout Timeout
 
       , testCase "treat timeouts as the same time" $ assert $
-            shouldSkipAfterTrial1 0.000001 89.9 92.0 Timeout Timeout
+            not $ shouldContinueAfterFirstTrial 0.000001 89.9 92.0 Timeout Timeout
 
       , testCase "skip when times are too close - 1" $ assert $
-                  shouldSkipAfterTrial1 10 1.0 0.91  Solution Solution
+            not $ shouldContinueAfterFirstTrial 10 1.0 0.91  Solution Solution
 
       , testCase "skip when times are too close - 2" $ assert $
-                  shouldSkipAfterTrial1 10 1.0 1.09  Solution Solution
+            not $ shouldContinueAfterFirstTrial 10 1.0 1.09  Solution Solution
 
       , testCase "rerun when times aren't too close - 1" $ assert $
-            not $ shouldSkipAfterTrial1 10 1.0 0.905 Solution Solution
+                  shouldContinueAfterFirstTrial 10 1.0 0.905 Solution Solution
 
       , testCase "rerun when times aren't too close - 2" $ assert $
-            not $ shouldSkipAfterTrial1 10 1.0 1.1   Solution Solution
+                  shouldContinueAfterFirstTrial 10 1.0 1.1   Solution Solution
     ]
   ]

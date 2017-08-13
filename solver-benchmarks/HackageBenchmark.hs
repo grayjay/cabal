@@ -8,9 +8,9 @@ module HackageBenchmark (
 -- Exposed for testing:
   , CabalResult(..)
   , combineTrialResults
-  , isSignificant
-  , isInterestingResultPair
-  , shouldSkipAfterTrial1
+  , isSignificantTimeDifference
+  , isSignificantResult
+  , shouldContinueAfterFirstTrial
   ) where
 
 import Control.Monad (forM_, replicateM, unless, when)
@@ -91,7 +91,8 @@ hackageBenchmarkMain = do
 
     CabalTrial t1 r1 <- runCabal1 pkg
     CabalTrial t2 r2 <- runCabal2 pkg
-    if shouldSkipAfterTrial1 argMinRunTimeDifferenceToRerun t1 t2 r1 r2
+    if not $
+       shouldContinueAfterFirstTrial argMinRunTimeDifferenceToRerun t1 t2 r1 r2
     then when argPrintSkippedPackages $
          if argPrintTrials
          then printTrial "trial (skipping)" r1 r2 t1 t2
@@ -117,8 +118,8 @@ hackageBenchmarkMain = do
           speedup = mean1 / mean2
 
       when argPrintTrials $ putStr $ printf "%-16s " "summary"
-      if isInterestingResultPair result1 result2
-          || isSignificant (mkPValue argPValue) ts1 ts2
+      if isSignificantResult result1 result2
+          || isSignificantTimeDifference (mkPValue argPValue) ts1 ts2
       then putStrLn $
            printf "%-*s %-13s %-13s %10.3fs %10.3fs %10.3fs %10.3fs %10.3f"
                   nameColumnWidth (unPackageName pkg)
@@ -182,8 +183,8 @@ runCabal timeoutSeconds cabal flags pkg = do
         | otherwise                                                = Unknown
   return (CabalTrial time result)
 
-isSignificant :: PValue Double -> [NominalDiffTime] -> [NominalDiffTime] -> Bool
-isSignificant pvalue xs ys =
+isSignificantTimeDifference :: PValue Double -> [NominalDiffTime] -> [NominalDiffTime] -> Bool
+isSignificantTimeDifference pvalue xs ys =
   let toVector = V.fromList . map diffTimeToDouble
   in case mannWhitneyUtest SamplesDiffer pvalue (toVector xs) (toVector ys) of
        Nothing             -> error "not enough data for mannWhitneyUtest"
@@ -193,20 +194,20 @@ isSignificant pvalue xs ys =
 -- Should we stop after the first trial of this package to save time? This
 -- function skips the package if the results are uninteresting and the times are
 -- within --min-run-time-percentage-difference-to-rerun.
-shouldSkipAfterTrial1 :: Double
-                      -> NominalDiffTime
-                      -> NominalDiffTime
-                      -> CabalResult
-                      -> CabalResult
-                      -> Bool
-shouldSkipAfterTrial1 0                            _  _  _       _       = False
-shouldSkipAfterTrial1 _                            _  _  Timeout Timeout = True
-shouldSkipAfterTrial1 maxRunTimeDifferenceToIgnore t1 t2 r1      r2      =
-    not (isInterestingResultPair r1 r2)
- && abs (t1 - t2) / min t1 t2 < realToFrac (maxRunTimeDifferenceToIgnore / 100)
+shouldContinueAfterFirstTrial :: Double
+                              -> NominalDiffTime
+                              -> NominalDiffTime
+                              -> CabalResult
+                              -> CabalResult
+                              -> Bool
+shouldContinueAfterFirstTrial 0                            _  _  _       _       = True
+shouldContinueAfterFirstTrial _                            _  _  Timeout Timeout = False
+shouldContinueAfterFirstTrial maxRunTimeDifferenceToIgnore t1 t2 r1      r2      =
+    isSignificantResult r1 r2
+ || abs (t1 - t2) / min t1 t2 >= realToFrac (maxRunTimeDifferenceToIgnore / 100)
 
-isInterestingResultPair :: CabalResult -> CabalResult -> Bool
-isInterestingResultPair r1 r2 = r1 /= r2 || not (isExpectedResult r1)
+isSignificantResult :: CabalResult -> CabalResult -> Bool
+isSignificantResult r1 r2 = r1 /= r2 || not (isExpectedResult r1)
 
 -- Is this result expected in a benchmark run on all of Hackage?
 isExpectedResult :: CabalResult -> Bool
