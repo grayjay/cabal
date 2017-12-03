@@ -615,13 +615,13 @@ getExternalSetupMethod verbosity options pkg bt = do
   cabalLibVersionToUse :: IO (Version, Maybe ComponentId
                              ,SetupScriptOptions)
   cabalLibVersionToUse =
-    case find (isCabalPkgId . snd) (useDependencies options) of
-      Just (unitId, pkgId) -> do
-        let version = pkgVersion pkgId
-        updateSetupScript version bt
-        writeSetupVersionFile version
-        return (version, Just unitId, options)
-      Nothing ->
+    -- case find (isCabalPkgId . snd) (useDependencies options) of
+    --   Just (unitId, pkgId) -> do
+    --     let version = pkgVersion pkgId
+    --     updateSetupScript version bt
+    --     writeSetupVersionFile version
+    --     return (version, Just unitId, options)
+    --   Nothing ->
         case useCabalSpecVersion options of
           Just version -> do
             updateSetupScript version bt
