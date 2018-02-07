@@ -155,7 +155,7 @@ fi
 
 # NB: For Travis, we do a *monolithic* build, which means all the
 # test suites are baked into the cabal binary
-timed cabal new-build $jobs $CABAL_INSTALL_FLAGS cabal-install:cabal
+timed cabal new-build $jobs $CABAL_INSTALL_FLAGS cabal-install:cabal -v3
 
 timed cabal new-build $jobs hackage-repo-tool
 
