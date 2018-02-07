@@ -121,7 +121,7 @@ export CABAL_BUILDDIR="${CABAL_TESTSUITE_BDIR}"
 
 # NB: We always build this test runner, because it is used
 # both by Cabal and cabal-install
-timed cabal new-build $jobs cabal-testsuite:cabal-tests
+timed cabal new-build $jobs cabal-testsuite:cabal-tests -v3
 
 if [ "x$SKIP_TESTS" != "xYES" ]; then
    (cd cabal-testsuite && timed ${CABAL_TESTSUITE_BDIR}/build/cabal-tests/cabal-tests --builddir=${CABAL_TESTSUITE_BDIR} -j3 $TEST_OPTIONS) || exit $?
