@@ -22,31 +22,7 @@ main = cabalTest $ withSourceCopy $
     shouldExist freezeFile
     assertFileDoesContain freezeFile "any.my-library-dep ==1.0"
     assertFileDoesNotContain freezeFile "my-local-package"
-
-    -- cabal should be able to build the package using the constraint from the
-    -- freeze file.
-    cabal' "new-build" [] >>= assertDoesNotUseLatestDependency
-
-    -- Re-running new-freeze should not change the constraints, because cabal
-    -- should use the existing freeze file when choosing the new install plan.
-    cabal "new-freeze" []
-    assertFileDoesContain freezeFile "any.my-library-dep ==1.0"
-
-    -- cabal should choose the latest version again after the freeze file is
-    -- removed.
-    liftIO $ removeFile freezeFile
-    cabal' "new-build" ["--dry-run"] >>= assertUsesLatestDependency
-
-    -- Re-running new-freeze with no constraints or freeze file should constrain
-    -- the dependency to the latest version.
-    cabal "new-freeze" []
-    assertFileDoesContain freezeFile "any.my-library-dep ==2.0"
-    assertFileDoesNotContain freezeFile "my-local-package"
   where
     assertUsesLatestDependency out = do
       assertOutputContains "my-library-dep-2.0 (lib)" out
       assertOutputDoesNotContain "my-library-dep-1.0" out
-
-    assertDoesNotUseLatestDependency out = do
-      assertOutputContains "my-library-dep-1.0 (lib)" out
-      assertOutputDoesNotContain "my-library-dep-2.0" out
