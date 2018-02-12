@@ -13,7 +13,7 @@ import Distribution.Client.ProjectConfig
          ( ProjectConfig(..), ProjectConfigShared(..)
          , writeProjectLocalFreezeConfig )
 import Distribution.Client.Targets
-         ( UserQualifier(..), UserConstraintScope(..), UserConstraint(..) )
+         ( UserConstraintScope(..), UserConstraint(..) )
 import Distribution.Solver.Types.PackageConstraint
          ( PackageProperty(..) )
 import Distribution.Solver.Types.ConstraintSource
@@ -191,7 +191,7 @@ projectFreezeConstraints plan =
     flagConstraints :: Map PackageName [(UserConstraint, ConstraintSource)]
     flagConstraints =
       Map.mapWithKey
-        (\p f -> [(UserConstraint (UserQualified UserQualToplevel p) (PackagePropertyFlags f),
+        (\p f -> [(UserConstraint (UserAnyQualifier p) (PackagePropertyFlags f),
                    ConstraintSourceFreeze)])
         flagAssignments
 
