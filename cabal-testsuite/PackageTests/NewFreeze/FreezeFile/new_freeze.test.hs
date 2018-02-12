@@ -22,6 +22,7 @@ main = cabalTest $ withSourceCopy $
     shouldExist freezeFile
     assertFileDoesContain freezeFile "any.my-library-dep ==1.0"
     assertFileDoesNotContain freezeFile "my-local-package"
+    assertFileDoesContain freezeFile "any.exe-dependency ==1.0"
   where
     assertUsesLatestDependency out = do
       assertOutputContains "my-library-dep-2.0 (lib)" out
