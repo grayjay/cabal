@@ -477,7 +477,7 @@ src `archiveTo` dst = do
     -- TODO: Consider using the @tar@ library?
     let (src_parent, src_dir) = splitFileName src
     -- TODO: --format ustar, like createArchive?
-    tar ["-czf", dst, "-C", src_parent, src_dir]
+    tar ["-czf", dst, "--force-local", "-C", src_parent, src_dir]
 
 infixr 4 `archiveTo`
 
@@ -512,7 +512,7 @@ withRepo repo_dir m = do
     let package_cache = testHomeDir env </> ".cabal" </> "packages"
     liftIO $ appendFile (testUserCabalConfigFile env)
            $ unlines [ "repository test-local-repo"
-                     , "  url: file:" ++ testRepoDir env
+                     , "  url: file:" ++ testCaseName env ++ ".dist/repo"
                      , "  secure: True"
                      -- TODO: Hypothetically, we could stick in the
                      -- correct key here

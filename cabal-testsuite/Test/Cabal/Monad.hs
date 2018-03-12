@@ -27,6 +27,7 @@ module Test.Cabal.Monad (
     resub,
     -- * Derived values from 'TestEnv'
     testCurrentDir,
+    testCaseName,
     testWorkDir,
     testPrefixDir,
     testDistDir,
@@ -316,7 +317,8 @@ runTestM mode m = do
                         -- Try to avoid Unicode output
                         [ ("LC_ALL", Just "C")
                         -- Hermetic builds (knot-tied)
-                        , ("HOME", Just (testHomeDir env))],
+                        , ("HOME", Just (testHomeDir env))
+                        , ("CABAL_CONFIG", Just (testUserCabalConfigFile env))],
                     testShouldFail = False,
                     testRelativeCurrentDir = ".",
                     testHavePackageDb = False,
@@ -588,15 +590,15 @@ testCurrentDir env =
         then testSourceCopyDir env
         else testSourceDir env) </> testRelativeCurrentDir env
 
-testName :: TestEnv -> String
-testName env = testSubName env <.> testMode env
+testCaseName :: TestEnv -> String
+testCaseName env = testSubName env <.> testMode env
 
 -- | The absolute path to the directory containing all the
 -- files for ALL tests associated with a test (respecting
 -- subtests.)  To clean, you ONLY need to delete this directory.
 testWorkDir :: TestEnv -> FilePath
 testWorkDir env =
-    testSourceDir env </> (testName env <.> "dist")
+    testSourceDir env </> (testCaseName env <.> "dist")
 
 -- | The absolute prefix where installs go.
 testPrefixDir :: TestEnv -> FilePath
@@ -644,11 +646,11 @@ testUserCabalConfigFile env = testHomeDir env </> ".cabal" </> "config"
 
 -- | The file where the expected output of the test lives
 testExpectFile :: TestEnv -> FilePath
-testExpectFile env = testSourceDir env </> testName env <.> "out"
+testExpectFile env = testSourceDir env </> testCaseName env <.> "out"
 
 -- | Where we store the actual output
 testActualFile :: TestEnv -> FilePath
-testActualFile env = testWorkDir env </> testName env <.> "comp.out"
+testActualFile env = testWorkDir env </> testCaseName env <.> "comp.out"
 
 -- | Where we will write the normalized actual file (for diffing)
 testNormalizedActualFile :: TestEnv -> FilePath
@@ -656,4 +658,4 @@ testNormalizedActualFile env = testActualFile env <.> "normalized"
 
 -- | Where we will write the normalized expected file (for diffing)
 testNormalizedExpectFile :: TestEnv -> FilePath
-testNormalizedExpectFile env = testWorkDir env </> testName env <.> "out.normalized"
+testNormalizedExpectFile env = testWorkDir env </> testCaseName env <.> "out.normalized"
