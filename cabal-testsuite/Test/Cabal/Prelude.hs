@@ -477,7 +477,7 @@ src `archiveTo` dst = do
     -- TODO: Consider using the @tar@ library?
     let (src_parent, src_dir) = splitFileName src
     -- TODO: --format ustar, like createArchive?
-    tar ["-czf", dst, "-C", src_parent, src_dir]
+    tar ["-czf", dst, "--force-local", "-C", src_parent, src_dir]
 
 infixr 4 `archiveTo`
 
@@ -512,7 +512,7 @@ withRepo repo_dir m = do
     let package_cache = testHomeDir env </> ".cabal" </> "packages"
     liftIO $ appendFile (testUserCabalConfigFile env)
            $ unlines [ "repository test-local-repo"
-                     , "  url: file:" ++ testRepoDir env
+                     , "  url: " ++ repoUri env
                      , "  secure: True"
                      -- TODO: Hypothetically, we could stick in the
                      -- correct key here
@@ -527,6 +527,16 @@ withRepo repo_dir m = do
     -- 8. Profit
     withReaderT (\env' -> env' { testHaveRepo = True }) m
     -- TODO: Arguably should undo everything when we're done...
+  where
+    repoUri env =
+      if buildOS == Windows
+      then let relPath = definitelyMakeRelative (testCurrentDir env)
+                                                (testRepoDir env)
+               convertSeparators = intercalate "/"
+                                 . map dropTrailingPathSeparator
+                                 . splitPath
+           in "file:" ++ convertSeparators relPath
+      else "file:" ++ testRepoDir env
 
 ------------------------------------------------------------------------
 -- * Subprocess run results
