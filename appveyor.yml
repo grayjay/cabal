@@ -27,6 +27,7 @@ build_script:
   - cd ..
   - git clone https://github.com/haskell/hackage-security.git
   - cd hackage-security\hackage-security
+  - git checkout 21519f4f572b9547485285ebe44c152e1230fd76
   - echo "" | cabal install --allow-newer=Cabal,time --constraint="Cabal == 2.3.0.0"
   - cd ..\hackage-repo-tool
   - echo "" | cabal install --allow-newer=Cabal,time --constraint="Cabal == 2.3.0.0"
