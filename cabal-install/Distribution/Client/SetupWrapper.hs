@@ -73,7 +73,7 @@ import Distribution.Simple.PackageIndex (InstalledPackageIndex)
 import qualified Distribution.InstalledPackageInfo as IPI
 import Distribution.Client.Types
 import Distribution.Client.Config
-         ( defaultCabalDir )
+         ( getCabalDir )
 import Distribution.Client.IndexUtils
          ( getInstalledPackages )
 import Distribution.Client.JobControl
@@ -764,7 +764,7 @@ getExternalSetupMethod verbosity options pkg bt = do
   cachedSetupDirAndProg :: SetupScriptOptions -> Version
                         -> IO (FilePath, FilePath)
   cachedSetupDirAndProg options' cabalLibVersion = do
-    cabalDir <- defaultCabalDir
+    cabalDir <- getCabalDir
     let setupCacheDir       = cabalDir </> "setup-exe-cache"
         cachedSetupProgFile = setupCacheDir
                               </> ("setup-" ++ buildTypeString ++ "-"

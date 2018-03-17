@@ -22,7 +22,7 @@ module Distribution.Client.Config (
     showConfigWithComments,
     parseConfig,
 
-    defaultCabalDir,
+    getCabalDir,
     defaultConfigFile,
     defaultCacheDir,
     defaultCompiler,
@@ -431,7 +431,7 @@ instance Semigroup SavedConfig where
 --
 baseSavedConfig :: IO SavedConfig
 baseSavedConfig = do
-  userPrefix <- defaultCabalDir
+  userPrefix <- getCabalDir
   cacheDir   <- defaultCacheDir
   logsDir    <- defaultLogsDir
   worldFile  <- defaultWorldFile
@@ -481,40 +481,45 @@ initialSavedConfig = do
     }
   }
 
---TODO: misleading, there's no way to override this default
---      either make it possible or rename to simply getCabalDir.
 defaultCabalDir :: IO FilePath
 defaultCabalDir = getAppUserDataDirectory "cabal"
 
+getCabalDir :: IO FilePath
+getCabalDir = do
+  mDir <- lookup "CABAL_DIR" <$> getEnvironment
+  case mDir of
+    Nothing -> defaultCabalDir
+    Just dir -> return dir
+
 defaultConfigFile :: IO FilePath
 defaultConfigFile = do
-  dir <- defaultCabalDir
+  dir <- getCabalDir
   return $ dir </> "config"
 
 defaultCacheDir :: IO FilePath
 defaultCacheDir = do
-  dir <- defaultCabalDir
+  dir <- getCabalDir
   return $ dir </> "packages"
 
 defaultLogsDir :: IO FilePath
 defaultLogsDir = do
-  dir <- defaultCabalDir
+  dir <- getCabalDir
   return $ dir </> "logs"
 
 -- | Default position of the world file
 defaultWorldFile :: IO FilePath
 defaultWorldFile = do
-  dir <- defaultCabalDir
+  dir <- getCabalDir
   return $ dir </> "world"
 
 defaultExtraPath :: IO [FilePath]
 defaultExtraPath = do
-  dir <- defaultCabalDir
+  dir <- getCabalDir
   return [dir </> "bin"]
 
 defaultSymlinkPath :: IO FilePath
 defaultSymlinkPath = do
-  dir <- defaultCabalDir
+  dir <- getCabalDir
   return (dir </> "bin")
 
 defaultCompiler :: CompilerFlavor
