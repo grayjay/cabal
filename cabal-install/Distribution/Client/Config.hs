@@ -124,7 +124,7 @@ import System.FilePath
 import System.IO.Error
          ( isDoesNotExistError )
 import Distribution.Compat.Environment
-         ( getEnvironment )
+         ( getEnvironment, lookupEnv )
 import Distribution.Compat.Exception
          ( catchIO )
 import qualified Paths_cabal_install
@@ -486,7 +486,7 @@ defaultCabalDir = getAppUserDataDirectory "cabal"
 
 getCabalDir :: IO FilePath
 getCabalDir = do
-  mDir <- lookup "CABAL_DIR" <$> getEnvironment
+  mDir <- lookupEnv "CABAL_DIR"
   case mDir of
     Nothing -> defaultCabalDir
     Just dir -> return dir
