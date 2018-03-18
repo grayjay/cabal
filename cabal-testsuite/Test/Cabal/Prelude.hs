@@ -478,6 +478,7 @@ src `archiveTo` dst = do
     -- TODO: Consider using the @tar@ library?
     let (src_parent, src_dir) = splitFileName src
     -- TODO: --format ustar, like createArchive?
+    -- --force-local is necessary for handling colons in Windows paths.
     tar ["-czf", dst, "--force-local", "-C", src_parent, src_dir]
 
 infixr 4 `archiveTo`
@@ -939,9 +940,13 @@ isTestFile f =
         ".multitest.hs" -> True
         _               -> False
 
+-- | Work around issue #4515 (store paths exceding the Windows path length
+-- limit) by creating a temporary directory for the new-build store. This
+-- function creates a directory immediately under the current drive on Windows.
+-- The directory must be passed to new- commands with --store-dir.
 withShorterPathForNewBuildStore :: (FilePath -> IO a) -> IO a
 withShorterPathForNewBuildStore test = do
   tempDir <- if buildOS == Windows
-             then takeDrive <$> getCurrentDirectory
+             then takeDrive `fmap` getCurrentDirectory
              else getTemporaryDirectory
-  withTempDirectory normal tempDir "t" test
+  withTempDirectory normal tempDir "cabal-test-store" test
