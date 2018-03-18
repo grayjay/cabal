@@ -9,4 +9,4 @@ main = withShorterPathForNewBuildStore $ \storeDir ->
     -- we had the full Hackage index, we'd try it.)
     skipUnless =<< ghcVersionIs (< mkVersion [8,1])
     withRepo "repo" $ do
-        cabal "new-build" ["a", "--store-dir=" ++ storeDir]
+        cabalG ["--store-dir=" ++ storeDir] "new-build" ["a"]

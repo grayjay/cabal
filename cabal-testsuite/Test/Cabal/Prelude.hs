@@ -944,4 +944,4 @@ withShorterPathForNewBuildStore test = do
   tempDir <- if buildOS == Windows
              then takeDrive <$> getCurrentDirectory
              else getTemporaryDirectory
-  withTempDirectory normal tempDir "cabal-test-store" test
+  withTempDirectory normal tempDir "t" test
