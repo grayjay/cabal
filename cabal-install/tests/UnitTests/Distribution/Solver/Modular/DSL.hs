@@ -21,6 +21,7 @@ module UnitTests.Distribution.Solver.Modular.DSL (
   , ExampleVar(..)
   , EnableAllTests(..)
   , exAv
+  , exAvNoLibrary
   , exInst
   , exFlagged
   , exResolve
@@ -205,10 +206,13 @@ data ExPreference =
 data ExampleAvailable = ExAv {
     exAvName    :: ExamplePkgName
   , exAvVersion :: ExamplePkgVersion
-  , exAvDeps    :: ComponentDeps [ExampleDependency]
 
-  -- Setting flags here is only necessary to override the default values of
-  -- the fields in C.Flag.
+    -- The Maybe is necessary to distinguish between no library and a library
+    -- with no dependencies.
+  , exAvDeps    :: ComponentDeps (Maybe [ExampleDependency])
+
+    -- Setting flags here is only necessary to override the default values of
+    -- the fields in C.Flag.
   , exAvFlags   :: [ExFlag]
   } deriving Show
 
@@ -245,8 +249,15 @@ newtype EnableAllTests = EnableAllTests Bool
 --
 exAv :: ExamplePkgName -> ExamplePkgVersion -> [ExampleDependency]
      -> ExampleAvailable
-exAv n v ds = ExAv { exAvName = n, exAvVersion = v
-                   , exAvDeps = CD.fromLibraryDeps ds, exAvFlags = [] }
+exAv n v ds = (exAvNoLibrary n v) { exAvDeps = CD.fromLibraryDeps (Just ds) }
+
+-- | Constructs an 'ExampleAvailable' package, with no default library
+-- component.
+exAvNoLibrary :: ExamplePkgName -> ExamplePkgVersion -> ExampleAvailable
+exAvNoLibrary n v = ExAv { exAvName = n
+                         , exAvVersion = v
+                         , exAvDeps = CD.fromLibraryDeps Nothing
+                         , exAvFlags = [] }
 
 -- | Override the default settings (e.g., manual vs. automatic) for a subset of
 -- a package's flags.
@@ -257,7 +268,7 @@ declareFlags flags ex = ex {
 
 withSetupDeps :: ExampleAvailable -> [ExampleDependency] -> ExampleAvailable
 withSetupDeps ex setupDeps = ex {
-      exAvDeps = exAvDeps ex <> CD.fromSetupDeps setupDeps
+      exAvDeps = exAvDeps ex <> CD.fromSetupDeps (Just setupDeps)
     }
 
 withTest :: ExampleAvailable -> ExTest -> ExampleAvailable
@@ -265,7 +276,7 @@ withTest ex test = withTests ex [test]
 
 withTests :: ExampleAvailable -> [ExTest] -> ExampleAvailable
 withTests ex tests =
-  let testCDs = CD.fromList [(CD.ComponentTest $ C.mkUnqualComponentName name, deps)
+  let testCDs = CD.fromList [(CD.ComponentTest $ C.mkUnqualComponentName name, Just deps)
                             | ExTest name deps <- tests]
   in ex { exAvDeps = exAvDeps ex <> testCDs }
 
@@ -274,7 +285,7 @@ withExe ex exe = withExes ex [exe]
 
 withExes :: ExampleAvailable -> [ExExe] -> ExampleAvailable
 withExes ex exes =
-  let exeCDs = CD.fromList [(CD.ComponentExe $ C.mkUnqualComponentName name, deps)
+  let exeCDs = CD.fromList [(CD.ComponentExe $ C.mkUnqualComponentName name, Just deps)
                            | ExExe name deps <- exes]
   in ex { exAvDeps = exAvDeps ex <> exeCDs }
 
@@ -328,20 +339,20 @@ exAvSrcPkg ex =
               usedFlags = Map.fromList [(fn, mkDefaultFlag fn) | fn <- names]
                 where
                   names = concatMap extractFlags $
-                          CD.libraryDeps (exAvDeps ex)
+                          fromMaybe [] (CD.libraryDeps (exAvDeps ex))
                            ++ concatMap snd testSuites
                            ++ concatMap snd executables
           in -- 'declaredFlags' overrides 'usedFlags' to give flags non-default settings:
              Map.elems $ declaredFlags `Map.union` usedFlags
 
-        testSuites = [(name, deps) | (CD.ComponentTest name, deps) <- CD.toList (exAvDeps ex)]
-        executables = [(name, deps) | (CD.ComponentExe name, deps) <- CD.toList (exAvDeps ex)]
-        setup = case CD.setupDeps (exAvDeps ex) of
-                  []   -> Nothing
-                  deps -> Just C.SetupBuildInfo {
-                            C.setupDepends = mkSetupDeps deps,
-                            C.defaultSetupDepends = False
-                          }
+        testSuites = [(name, deps) | (CD.ComponentTest name, Just deps) <- CD.toList (exAvDeps ex)]
+        executables = [(name, deps) | (CD.ComponentExe name, Just deps) <- CD.toList (exAvDeps ex)]
+        setup = setupBI <$> CD.setupDeps (exAvDeps ex)
+          where
+            setupBI deps = C.SetupBuildInfo {
+                C.setupDepends = mkSetupDeps deps,
+                C.defaultSetupDepends = False
+              }
         package = SourcePackage {
             packageInfoId        = pkgId
           , packageSource        = LocalTarballPackage "<<path>>"
@@ -364,8 +375,8 @@ exAvSrcPkg ex =
               , C.genPackageFlags = flags
               , C.condLibrary =
                   let mkLib bi = mempty { C.libBuildInfo = bi }
-                  in Just $ mkCondTree defaultLib mkLib $ mkBuildInfoTree $
-                     Buildable (CD.libraryDeps (exAvDeps ex))
+                  in mkCondTree defaultLib mkLib . mkBuildInfoTree . Buildable
+                         <$> (CD.libraryDeps (exAvDeps ex))
               , C.condSubLibraries = []
               , C.condForeignLibs = []
               , C.condExecutables =

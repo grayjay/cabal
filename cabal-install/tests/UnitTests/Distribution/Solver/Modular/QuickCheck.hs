@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -276,14 +277,17 @@ arbitraryExInst pn v pkgs = do
   deps <- randomSubset numDeps pkgs
   return $ ExInst (unPN pn) (unPV v) pkgHash (map exInstHash deps)
 
-arbitraryComponentDeps :: TestDb -> Gen (ComponentDeps [ExampleDependency])
-arbitraryComponentDeps (TestDb []) = return $ CD.fromList []
-arbitraryComponentDeps db =
-    -- dedupComponentNames removes components with duplicate names, for example,
-    -- 'ComponentExe x' and 'ComponentTest x', and then CD.fromList combines
-    -- duplicate unnamed components.
-    CD.fromList . dedupComponentNames <$>
-    boundedListOf 5 (arbitraryComponentDep db)
+arbitraryComponentDeps :: TestDb -> Gen (ComponentDeps (Maybe [ExampleDependency]))
+arbitraryComponentDeps (TestDb []) = return $ CD.fromLibraryDeps (Just [])
+arbitraryComponentDeps db = do
+  -- dedupComponentNames removes components with duplicate names, for example,
+  -- 'ComponentExe x' and 'ComponentTest x', and then CD.fromList combines
+  -- duplicate unnamed components.
+  compDeps <- CD.fromList . dedupComponentNames <$> boundedListOf 5 (arbitraryComponentDep db)
+  return $ if isCompleteComponentDeps compDeps
+           then compDeps
+           else -- Add a library if the ComponentDeps isn't complete.
+                CD.fromLibraryDeps (Just []) <> compDeps
   where
     dedupComponentNames =
         nubBy ((\x y -> isJust x && isJust y && x == y) `on` componentName . fst)
@@ -297,13 +301,13 @@ arbitraryComponentDeps db =
     componentName (ComponentTest   n) = Just n
     componentName (ComponentBench  n) = Just n
 
-arbitraryComponentDep :: TestDb -> Gen (ComponentDep [ExampleDependency])
+arbitraryComponentDep :: TestDb -> Gen (ComponentDep (Maybe [ExampleDependency]))
 arbitraryComponentDep db = do
   comp <- arbitrary
   deps <- case comp of
             ComponentSetup -> smallListOf (arbitraryExDep db SetupDep)
             _              -> boundedListOf 5 (arbitraryExDep db NonSetupDep)
-  return (comp, deps)
+  return (comp, Just deps)
 
 -- | Location of an 'ExampleDependency'. It determines which values are valid.
 data ExDepLocation = SetupDep | NonSetupDep
@@ -404,10 +408,20 @@ instance Arbitrary ExampleAvailable where
 
   shrink ea = [ea { exAvDeps = deps } | deps <- shrink (exAvDeps ea)]
 
-instance (Arbitrary a, Monoid a) => Arbitrary (ComponentDeps a) where
+instance (Arbitrary a, Monoid a) => Arbitrary (ComponentDeps (Maybe a)) where
   arbitrary = error "arbitrary not implemented: ComponentDeps"
 
-  shrink = map CD.fromList . shrink . CD.toList
+  shrink = filter isCompleteComponentDeps . map CD.fromList . shrink . CD.toList
+
+isCompleteComponentDeps :: ComponentDeps (Maybe a) -> Bool
+isCompleteComponentDeps = any (uncurry exposed) . CD.toList
+  where
+    exposed ComponentSetup      _        = False
+    exposed (ComponentSubLib _) _        = False
+    exposed (ComponentFLib   _) _        = False
+    exposed (ComponentBench  _) _        = False
+    exposed _                   (Just _) = True
+    exposed _                   _        = False
 
 instance Arbitrary ExampleDependency where
   arbitrary = error "arbitrary not implemented: ExampleDependency"
