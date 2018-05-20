@@ -223,8 +223,92 @@ convGPD os arch cinfo strfl solveExes pn
     -- forced to, emit a meaningful solver error message).
     fr | reqSpecVer > maxSpecVer = Just (UnsupportedSpecVer reqSpecVer)
        | otherwise               = Nothing
-  in
-    PInfo flagged_deps (L.map (ExposedExe . fst) exes ++ [ExposedLib | isJust mlib]) fds fr
+
+    -- | Returns true if the package fits either description, in the current
+    -- environment:
+    --
+    -- Buildable non-test package: It has at least one buildable library or exe.
+    -- Buildable test package: It has no libraries or exes, but it does have at
+    --                         least one buildable test or benchmark.
+    --
+    -- Checking whether components may be buildable in the current environment
+    -- handles the most common case of issue #5325. A more thorough solution
+    -- would involve tracking which components need to be built and then
+    -- checking that those components are buildable with the package's flag
+    -- assignment, as in issue #4087.
+    isBuildablePackage :: Bool
+    isBuildablePackage =
+        or libExeBuildableValues
+         || L.null libExeBuildableValues && or testBenchBuildableValues
+      where
+        isBuildable = isBuildableComponent os arch cinfo
+
+        libExeBuildableValues =
+            L.map (isBuildable libBuildInfo) (maybeToList mlib)
+         ++ L.map (isBuildable libBuildInfo . snd) sub_libs
+         ++ L.map (isBuildable foreignLibBuildInfo . snd) flibs
+         ++ L.map (isBuildable buildInfo . snd) exes
+
+        testBenchBuildableValues =
+            L.map (isBuildable testBuildInfo . snd) tests
+         ++ L.map (isBuildable benchmarkBuildInfo . snd) benchs
+
+  in if isBuildablePackage
+     then PInfo flagged_deps (L.map (ExposedExe . fst) exes ++ [ExposedLib | isJust mlib]) fds fr
+     else PInfo [] [] M.empty (Just NotBuildable)
+
+-- | Returns true if the component is buildable in the given environment.
+-- This function can give false-positives. For example, it ignores all flags,
+-- and it doesn't check whether the intra-package dependencies of a component
+-- are buildable.
+isBuildableComponent :: OS
+                     -> Arch
+                     -> CompilerInfo
+                     -> (a -> BuildInfo)
+                     -> CondTree ConfVar [Dependency] a
+                     -> Bool
+isBuildableComponent os arch cinfo getInfo tree =
+    case simplifyCondition $ extractCondition (buildable . getInfo) tree of
+      Lit False -> False
+      _         -> True
+  where
+    -- Simplify the condition, using the current environment. Most of this
+    -- function was copied from convBranch and
+    -- Distribution.Types.Condition.simplifyCondition.
+    simplifyCondition :: Condition ConfVar -> Condition ConfVar
+    simplifyCondition (Var (OS os')) = Lit (os == os')
+    simplifyCondition (Var (Arch arch')) = Lit (arch == arch')
+    simplifyCondition (Var (Impl cf cvr))
+        | matchImpl (compilerInfoId cinfo) ||
+              -- fixme: Nothing should be treated as unknown, rather than empty
+              --        list. This code should eventually be changed to either
+              --        support partial resolution of compiler flags or to
+              --        complain about incompletely configured compilers.
+          any matchImpl (fromMaybe [] $ compilerInfoCompat cinfo) = Lit True
+        | otherwise = Lit False
+      where
+        matchImpl (CompilerId cf' cv) = cf == cf' && checkVR cvr cv
+    simplifyCondition (Var v) = Var v
+    simplifyCondition (Lit b) = Lit b
+    simplifyCondition (CNot c) =
+        case simplifyCondition c of
+          Lit True -> Lit False
+          Lit False -> Lit True
+          c' -> CNot c'
+    simplifyCondition (COr c d) =
+        case (simplifyCondition c, simplifyCondition d) of
+          (Lit False, d') -> d'
+          (Lit True, _)   -> Lit True
+          (c', Lit False) -> c'
+          (_, Lit True)   -> Lit True
+          (c', d')        -> COr c' d'
+    simplifyCondition (CAnd c d) =
+        case (simplifyCondition c, simplifyCondition d) of
+          (Lit False, _) -> Lit False
+          (Lit True, d') -> d'
+          (_, Lit False) -> Lit False
+          (c', Lit True) -> c'
+          (c', d')       -> CAnd c' d'
 
 -- | Create a flagged dependency tree from a list @fds@ of flagged
 -- dependencies, using @f@ to form the tree node (@f@ will be

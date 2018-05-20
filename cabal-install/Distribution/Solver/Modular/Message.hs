@@ -115,6 +115,7 @@ showFR _ CannotInstall                    = " (only already installed instances 
 showFR _ CannotReinstall                  = " (avoiding to reinstall a package with same version but new dependencies)"
 showFR _ Shadowed                         = " (shadowed by another installed package with same version)"
 showFR _ Broken                           = " (package is broken)"
+showFR _ NotBuildable                     = " (not buildable in the current environment)"
 showFR _ (GlobalConstraintVersion vr src) = " (" ++ constraintSource src ++ " requires " ++ display vr ++ ")"
 showFR _ (GlobalConstraintInstalled src)  = " (" ++ constraintSource src ++ " requires installed instance)"
 showFR _ (GlobalConstraintSource src)     = " (" ++ constraintSource src ++ " requires source instance)"
