@@ -428,16 +428,15 @@ tests = [
         , testSummarizedLog "show conflicts from final conflict set after exhaustive search" Nothing $
                 "Could not resolve dependencies:\n"
              ++ "[__0] trying: A-1.0.0 (user goal)\n"
-             ++ "[__1] unknown package: D (dependency of A)\n"
-             ++ "[__1] fail (backjumping, conflict set: A, D)\n"
+             ++ "[__1] unknown package: F (dependency of A)\n"
+             ++ "[__1] fail (backjumping, conflict set: A, F)\n"
              ++ "After searching the rest of the dependency tree exhaustively, "
-             ++ "these were the goals I've had most trouble fulfilling: A, D"
+             ++ "these were the goals I've had most trouble fulfilling: A, F"
         , testSummarizedLog "show first conflicts after inexhaustive search" (Just 3) $
                 "Could not resolve dependencies:\n"
              ++ "[__0] trying: A-1.0.0 (user goal)\n"
              ++ "[__1] trying: B-3.0.0 (dependency of A)\n"
-             ++ "[__2] next goal: C (dependency of B)\n"
-             ++ "[__2] rejecting: C-1.0.0 (conflict: B => C==3.0.0)\n"
+             ++ "[__2] unknown package: C (dependency of B)\n"
              ++ "[__2] fail (backjumping, conflict set: B, C)\n"
              ++ "Backjump limit reached (currently 3, change with --max-backjumps "
              ++ "or try to run with --reorder-goals).\n"
@@ -449,6 +448,13 @@ tests = [
               "minimize conflict set with --minimize-conflict-set"
         , testNoMinimizeConflictSet
               "show original conflict set with --no-minimize-conflict-set"
+        , testSkippedVersionLogMessage "skipped version log message"
+        , testSkippedVersionLogMessage2 "skipped version log message"
+        , testSkippedVersionLogMessage3 "skipped version log message"
+        , testSkippedVersionLogMessage4 "skipped version log message"
+        , testSkippedVersionLogMessage5 "skipped version log message"
+        , testSkippedVersionLogMessage6 "skipped version log message"
+        , installed "installed"
         ]
     ]
   where
@@ -1412,15 +1418,15 @@ testSummarizedLog testName mbj expectedMsg =
     solverFailure (== expectedMsg)
   where
     db = [
-        Right $ exAv "A" 1 [ExAny "B", ExAny "D"]
-      , Right $ exAv "B" 3 [ExFix "C" 3]
-      , Right $ exAv "B" 2 [ExFix "C" 2]
-      , Right $ exAv "B" 1 [ExAny "C"]
-      , Right $ exAv "C" 1 []
+        Right $ exAv "A" 1 [ExAny "B", ExAny "F"]
+      , Right $ exAv "B" 3 [ExAny "C"]
+      , Right $ exAv "B" 2 [ExAny "D"]
+      , Right $ exAv "B" 1 [ExAny "E"]
+      , Right $ exAv "E" 1 []
       ]
 
     goals :: [ExampleVar]
-    goals = [P QualNone pkg | pkg <- ["A", "B", "C", "D"]]
+    goals = [P QualNone pkg | pkg <- ["A", "B", "C", "D", "E", "F"]]
 
 dbMinimizeConflictSet :: ExampleDb
 dbMinimizeConflictSet = [
@@ -1495,6 +1501,230 @@ testNoMinimizeConflictSet testName =
 
     goals :: [ExampleVar]
     goals = [P QualNone pkg | pkg <- ["A", "B", "C", "D"]]
+
+-- simple example
+testSkippedVersionLogMessage :: String -> TestTree
+testSkippedVersionLogMessage testName =
+    runTest $ setVerbose $ mkTest db testName ["A"] $
+    SolverResult (isInfixOf expectedMsg) $ Right [("A", 1), ("B", 1), ("C", 1)]
+  where
+    db = [
+        Right $ exAv "A" 1 [ExAny "B"]
+      , Right $ exAv "B" 4 [ExFix "C" 4]
+      , Right $ exAv "B" 3 [ExFix "C" 3]
+      , Right $ exAv "B" 2 [ExFix "C" 2]
+      , Right $ exAv "B" 1 [ExFix "C" 1]
+      , Right $ exAv "C" 1 []
+      -- , Right $ exAv "C" 0 []
+      ]
+
+    expectedMsg = [
+        "[__0] trying: A-1.0.0 (user goal)"
+      , "[__1] trying: B-4.0.0 (dependency of A)"
+      , "[__2] next goal: C (dependency of B)"
+      , "[__2] rejecting: C-1.0.0 (conflict: B => C==4.0.0)"
+      , "[__2] fail (backjumping, conflict set: B, C)"
+      , "[__1] skipping: B-3.0.0, B-2.0.0 (has the same characteristics that "
+         ++ "caused the previous version to fail: depends on C but excludes "
+         ++ "version 1.0.0)"
+      , "[__1] trying: B-1.0.0"
+      , "[__2] next goal: C (dependency of B)"
+      , "[__2] trying: C-1.0.0"
+      , "[__3] done"
+      ]
+
+-- This is probably redundant with testSkippedVersionLogMessage3
+testSkippedVersionLogMessage2 :: String -> TestTree
+testSkippedVersionLogMessage2 testName =
+    runTest $ setVerbose $ mkTest db testName ["A"] $
+    SolverResult (isInfixOf expectedMsg) $ Right [("A", 1), ("C", 1)]
+  where
+    db = [
+        Right $ exAv "A" 3 [ExAny "B"]
+      , Right $ exAv "A" 2 [ExAny "B"]
+      , Right $ exAv "A" 1 [ExAny "C"]
+      , Right $ exAv "B" 2 [ExAny "unknown1"]
+      , Right $ exAv "B" 1 [ExAny "unknown2"]
+      , Right $ exAv "C" 1 []
+      ]
+
+    expectedMsg = [
+        "[__0] trying: A-3.0.0 (user goal)"
+      , "[__1] trying: B-2.0.0 (dependency of A)"
+      , "[__2] unknown package: unknown1 (dependency of B)"
+      , "[__2] fail (backjumping, conflict set: B, unknown1)"
+      , "[__1] trying: B-1.0.0"
+      , "[__2] unknown package: unknown2 (dependency of B)"
+      , "[__2] fail (backjumping, conflict set: B, unknown2)"
+      , "[__1] fail (backjumping, conflict set: A, B, unknown1, unknown2)"
+      , "[__0] skipping: A-2.0.0 (has the same characteristics that caused the "
+         ++ "previous version to fail: depends on B)"
+      , "[__0] trying: A-1.0.0"
+      , "[__1] next goal: C (dependency of A)"
+      , "[__1] trying: C-1.0.0"
+      , "[__2] done"
+      ]
+
+-- two conflicting goals
+testSkippedVersionLogMessage3 :: String -> TestTree
+testSkippedVersionLogMessage3 testName =
+    runTest $ setVerbose $ goalOrder goals $ mkTest db testName ["A"] $
+    SolverResult (isInfixOf expectedMsg) $ Right [("A", 1), ("B", 1), ("D", 1)]
+  where
+    db = [
+        Right $ exAv "A" 3 [ExAny "B", ExAny "C"]
+      , Right $ exAv "A" 2 [ExAny "B", ExAny "C"]
+      , Right $ exAv "A" 1 [ExAny "B"]
+      , Right $ exAv "B" 1 [ExFix "D" 1]
+      , Right $ exAv "C" 1 [ExFix "D" 2]
+      , Right $ exAv "D" 1 []
+      , Right $ exAv "D" 2 []
+      ]
+
+    goals :: [ExampleVar]
+    goals = [P QualNone pkg | pkg <- ["A", "B", "C", "D"]]
+
+    expectedMsg = [
+        "[__0] trying: A-3.0.0 (user goal)"
+      , "[__1] trying: B-1.0.0 (dependency of A)"
+      , "[__2] trying: C-1.0.0 (dependency of A)"
+      , "[__3] next goal: D (dependency of B)"
+      , "[__3] rejecting: D-2.0.0 (conflict: B => D==1.0.0)"
+      , "[__3] rejecting: D-1.0.0 (conflict: C => D==2.0.0)"
+      , "[__3] fail (backjumping, conflict set: B, C, D)"
+      , "[__2] fail (backjumping, conflict set: A, B, C, D)"
+      , "[__1] fail (backjumping, conflict set: A, B, C, D)"
+      , "[__0] skipping: A-2.0.0 (has the same characteristics that caused the "
+         ++ "previous version to fail: depends on B; depends on C)"
+
+      -- Tries A-1, because it resolves one issue
+      , "[__0] trying: A-1.0.0"
+      , "[__1] trying: B-1.0.0 (dependency of A)"
+      , "[__2] next goal: D (dependency of B)"
+      , "[__2] rejecting: D-2.0.0 (conflict: B => D==1.0.0)"
+      , "[__2] trying: D-1.0.0"
+      , "[__3] done"
+      ]
+
+testSkippedVersionLogMessage4 :: String -> TestTree
+testSkippedVersionLogMessage4 testName =
+    runTest $ setVerbose $ goalOrder goals $ mkTest db testName ["A"] $
+    SolverResult (isInfixOf expectedMsg) $ Right [("A", 1), ("B", 2), ("C", 2)]
+  where
+    db = [
+        Right $ exAv "A" 1 [ExAny "B", ExAny "C"]
+      , Right $ exAv "B" 3 []
+      , Right $ exAv "B" 2 []
+      , Right $ exAv "B" 1 []
+      , Right $ exAv "C" 2 [ExFix "B" 2]
+      , Right $ exAv "C" 1 [ExFix "B" 1]
+      ]
+
+    goals :: [ExampleVar]
+    goals = [P QualNone pkg | pkg <- ["A", "B", "C"]]
+
+    expectedMsg = [
+        "[__0] trying: A-1.0.0 (user goal)"
+      , "[__1] trying: B-3.0.0 (dependency of A)"
+      , "[__2] next goal: C (dependency of A)"
+      , "[__2] rejecting: C-2.0.0 (conflict: B==3.0.0, C => B==2.0.0)"
+
+      -- skips version instead of checking for (possibly different) conflict
+      , "[__2] skipping: C-1.0.0 (has the same characteristics that caused the "
+         ++ "previous version to fail: excludes B version 3.0.0)"
+
+      , "[__2] fail (backjumping, conflict set: A, B, C)"
+      , "[__1] trying: B-2.0.0"
+      , "[__2] next goal: C (dependency of A)"
+      , "[__2] trying: C-2.0.0"
+      , "[__3] done"
+      ]
+
+testSkippedVersionLogMessage5 :: String -> TestTree
+testSkippedVersionLogMessage5 testName =
+    runTest $ setVerbose $ goalOrder goals $ mkTest db testName ["A"] $
+    SolverResult (isInfixOf expectedMsg) $ Right [("A", 1), ("C", 2)]
+  where
+    db = [
+        Right $ exAv "A" 3 [ExFix "B" 1, ExFix "C" 1]
+      , Right $ exAv "A" 2 [ExFix "C" 1]
+      , Right $ exAv "A" 1 [ExFix "C" 2]
+      , Right $ exAv "B" 2 []
+      , Right $ exAv "B" 1 []
+      , Right $ exAv "C" 2 []
+      ]
+
+    goals :: [ExampleVar]
+    goals = [P QualNone pkg | pkg <- ["A", "B", "C"]]
+
+    expectedMsg = [
+        "[__0] trying: A-3.0.0 (user goal)"
+      , "[__1] next goal: B (dependency of A)"
+      , "[__1] rejecting: B-2.0.0 (conflict: A => B==1.0.0)"
+      , "[__1] trying: B-1.0.0"
+      , "[__2] next goal: C (dependency of A)"
+      , "[__2] rejecting: C-2.0.0 (conflict: A => C==1.0.0)"
+      , "[__2] fail (backjumping, conflict set: A, C)"
+
+      -- doesn't mention confict with B, similar to backjumping
+      , "[__0] skipping: A-2.0.0 (has the same characteristics that caused the "
+         ++ "previous version to fail: depends on C but excludes version 2.0.0)"
+      , "[__0] trying: A-1.0.0"
+      , "[__1] next goal: C (dependency of A)"
+      , "[__1] trying: C-2.0.0"
+      , "[__2] done"
+      ]
+
+testSkippedVersionLogMessage6 :: String -> TestTree
+testSkippedVersionLogMessage6 testName =
+    runTest $ setVerbose $ goalOrder goals $ mkTest db testName ["A"] $
+    SolverResult (isInfixOf expectedMsg) $ Left (const True)
+  where
+    db = [
+        Right $ exAv "A" 2 [ExFix "B" 2, ExAny "C"]
+      , Right $ exAv "A" 1 [ExFix "B" 2, ExAny "C"]
+      , Right $ exAv "B" 3 []
+      , Right $ exAv "B" 2 []
+      , Right $ exAv "B" 1 []
+      , Right $ exAv "C" 1 [ExFix "B" 4]
+      ]
+
+    goals :: [ExampleVar]
+    goals = [P QualNone pkg | pkg <- ["A", "B", "C"]]
+
+    expectedMsg = [
+        "[__0] trying: A-2.0.0 (user goal)"
+      , "[__1] next goal: B (dependency of A)"
+      , "[__1] rejecting: B-3.0.0 (conflict: A => B==2.0.0)"
+      , "[__1] trying: B-2.0.0"
+      , "[__2] next goal: C (dependency of A)"
+      , "[__2] rejecting: C-1.0.0 (conflict: B==2.0.0, C => B==4.0.0)"
+      , "[__2] fail (backjumping, conflict set: A, B, C)"
+      , "[__1] rejecting: B-1.0.0 (conflict: A => B==2.0.0)"
+      , "[__1] fail (backjumping, conflict set: A, B, C)"
+
+      -- doesn't mention B-2.0.0, even though it conflicted with C
+      , "[__0] skipping: A-1.0.0 (has the same characteristics that caused the "
+         ++ "previous version to fail: depends on B but excludes versions "
+         ++ "3.0.0, 1.0.0; depends on C)"
+
+      , "[__0] fail (backjumping, conflict set: A, B, C)"
+      ]
+
+installed :: String -> TestTree
+installed testName = runTest $ setVerbose $ goalOrder goals $
+                     mkTest db testName ["B", "A"] $
+                     solverSuccess [("A", 1)]
+  where
+    db = [
+        Right $ exAv "A" 2 [ExFix "B" 4]
+      , Right $ exAv "A" 1 [ExFix "B" 3]
+      , Left $ exInst "B" 5 "B-5" []
+      , Left $ exInst "B" 3 "B-3" []
+      ]
+
+    goals :: [ExampleVar]
+    goals = [P QualNone pkg | pkg <- ["B", "A"]]
 
 {-------------------------------------------------------------------------------
   Simple databases for the illustrations for the backjumping blog post

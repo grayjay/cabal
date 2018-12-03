@@ -6,10 +6,16 @@ module Distribution.Solver.Modular.Message (
   ) where
 
 import qualified Data.List as L
+import Data.Map (Map)
+import qualified Data.Map as M
+import Data.Set (Set)
+import qualified Data.Set as S
+import Data.Maybe (mapMaybe)
 import Prelude hiding (pi)
 
 import Distribution.Pretty (prettyShow) -- from Cabal
 
+import qualified Distribution.Solver.Modular.ConflictSet as CS
 import Distribution.Solver.Modular.Dependency
 import Distribution.Solver.Modular.Flag
 import Distribution.Solver.Modular.Package
@@ -28,7 +34,7 @@ data Message =
   | TryF QFN Bool
   | TryS QSN Bool
   | Next (Goal QPN)
-  | Skip QPN POption
+  | Skip QPN POption (Set CS.Conflict)
   | Success
   | Failure ConflictSet FailReason
 
@@ -48,6 +54,8 @@ showMessages = go 0
     -- complex patterns
     go !l (Step (TryP qpn i) (Step Enter (Step (Failure c fr) (Step Leave ms)))) =
         goPReject l qpn [i] c fr ms
+    go !l (Step (TryP qpn i) (Step Enter (Step (Skip _ _ conflicts) (Step Leave ms)))) =
+        goPSkip l qpn [i] conflicts ms
     go !l (Step (TryF qfn b) (Step Enter (Step (Failure c fr) (Step Leave ms)))) =
         (atLevel l $ "rejecting: " ++ showQFNBool qfn b ++ showFR c fr) (go l ms)
     go !l (Step (TryS qsn b) (Step Enter (Step (Failure c fr) (Step Leave ms)))) =
@@ -64,7 +72,7 @@ showMessages = go 0
     go !l (Step (TryS qsn b)             ms) = (atLevel l $ "trying: " ++ showQSNBool qsn b) (go l ms)
     go !l (Step (Next (Goal (P qpn) gr)) ms) = (atLevel l $ showPackageGoal qpn gr) (go l ms)
     go !l (Step (Next _)                 ms) = go l     ms -- ignore flag goals in the log
-    go !l (Step (Skip qpn i)             ms) = (atLevel l $ "skipping: " ++ showQPNPOpt qpn i) (go l ms)
+    go !l (Step (Skip qpn i conflicts)   ms) = goPSkip l qpn [i] conflicts ms
     go !l (Step (Success)                ms) = (atLevel l $ "done") (go l ms)
     go !l (Step (Failure c fr)           ms) = (atLevel l $ showFailure c fr) (go l ms)
 
@@ -87,11 +95,81 @@ showMessages = go 0
     goPReject l qpn is c fr ms =
         (atLevel l $ "rejecting: " ++ L.intercalate ", " (map (showQPNPOpt qpn) (reverse is)) ++ showFR c fr) (go l ms)
 
+    goPSkip :: Int
+            -> QPN
+            -> [POption]
+            -> Set CS.Conflict
+            -> Progress Message a b
+            -> Progress String a b
+    goPSkip l qpn is conflicts (Step (TryP qpn' i) (Step Enter (Step (Skip _ _ conflicts') (Step Leave ms))))
+      | qpn == qpn' && conflicts == conflicts' = goPSkip l qpn (i : is) conflicts ms
+    goPSkip l qpn is conflicts ms =
+      let msg = "skipping: "
+                 ++ L.intercalate ", " (map (showQPNPOpt qpn) (reverse is))
+                 ++ showConflicts conflicts
+      in atLevel l msg (go l ms)
+
     -- write a message with the current level number
     atLevel :: Int -> String -> Progress String a b -> Progress String a b
     atLevel l x xs =
       let s = show l
       in  Step ("[" ++ replicate (3 - length s) '_' ++ s ++ "] " ++ x) xs
+
+-- | Display the set of CS.Conflicts for a skipped package version.
+showConflicts :: Set CS.Conflict -> String
+showConflicts conflicts =
+    " (has the same characteristics that caused the previous version to fail: "
+     ++ conflictMsg ++ ")"
+  where
+    conflictMsg :: String
+    conflictMsg =
+      if S.member CS.OtherConflict conflicts
+      then
+        -- This case shouldn't happen, because an unknown conflict should not
+        -- cause a version to be skipped.
+        "unknown conflict"
+      else let mergedConflicts =
+                   [ showConflict qpn conflict
+                   | (qpn, conflict) <- M.toList (mergeConflicts conflicts) ]
+           in if L.null mergedConflicts
+              -- This case shouldn't happen unless backjumping is turned off.
+              then "none"
+              else L.intercalate "; " mergedConflicts
+
+    -- Merge conflicts to simplify the log message.
+    mergeConflicts :: Set CS.Conflict -> Map QPN MergedPackageConflict
+    mergeConflicts = M.fromListWith mergeConflict . mapMaybe toMergedConflict . S.toList
+      where
+        mergeConflict :: MergedPackageConflict -> MergedPackageConflict -> MergedPackageConflict
+        mergeConflict (MergedPackageConflict goalConflict1 vs1) (MergedPackageConflict goalConflict2 vs2) =
+            MergedPackageConflict (goalConflict1 || goalConflict2) $ L.nub (vs1 ++ vs2)
+
+        toMergedConflict :: CS.Conflict -> Maybe (QPN, MergedPackageConflict)
+        toMergedConflict CS.OtherConflict = Nothing
+        toMergedConflict (CS.VersionConflict2 qpn (CS.VersionRange2 vr)) = Nothing -- TODO: Fix this
+        toMergedConflict (CS.GoalConflict qpn) = Just (qpn, MergedPackageConflict True [])
+        toMergedConflict (CS.VersionConflict qpn v) = Just (qpn, MergedPackageConflict False [v])
+
+    showConflict :: QPN -> MergedPackageConflict -> String
+    showConflict qpn conflict =
+      if hasGoalConflict conflict
+      then "depends on " ++ showQPN qpn ++
+               (if null (versionConflicts conflict)
+                then ""
+                else " but excludes " ++ showVersions (versionConflicts conflict))
+      else "excludes " ++ showQPN qpn ++ " "
+            ++ showVersions (versionConflicts conflict)
+      where
+        showVersions []  = "no versions"
+        showVersions [v] = "version " ++ showVer v
+        showVersions vs  = "versions " ++ L.intercalate ", " (map showVer vs)
+
+-- | All conflicts related to one package, used for simplifying the display of
+-- a 'Set CS.Conflict'.
+data MergedPackageConflict = MergedPackageConflict {
+    hasGoalConflict  :: Bool
+  , versionConflicts :: [Ver]
+  }
 
 showQPNPOpt :: QPN -> POption -> String
 showQPNPOpt qpn@(Q _pp pn) (POption i linkedTo) =

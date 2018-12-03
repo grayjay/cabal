@@ -36,6 +36,7 @@ module Distribution.Solver.Modular.Dependency (
   , goalReasonToCSWithConflict
   , dependencyReasonToCS
   , dependencyReasonToCSWithConflict
+  , dependencyReasonToCSWithConflict2
   ) where
 
 import Prelude ()
@@ -311,3 +312,7 @@ dependencyReasonToCSWithConflict depQpn v dr@(DependencyReason qpn flags stanzas
   | M.null flags && S.null stanzas =
     CS.singletonWithConflict (P qpn) $ CS.VersionConflict depQpn v
   | otherwise = dependencyReasonToCS dr
+
+dependencyReasonToCSWithConflict2 :: QPN -> CS.VersionRange2 -> DependencyReason QPN -> ConflictSet
+dependencyReasonToCSWithConflict2 depQPN vr (DependencyReason qpn _ _) =
+    CS.singletonWithConflict (P qpn) $ CS.VersionConflict2 depQPN vr

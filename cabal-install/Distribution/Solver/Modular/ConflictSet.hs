@@ -10,8 +10,9 @@
 -- > import qualified Distribution.Solver.Modular.ConflictSet as CS
 module Distribution.Solver.Modular.ConflictSet (
     ConflictSet -- opaque
-  , ConflictMap
   , Conflict(..)
+  , ConflictMap
+  , VersionRange2(..)
 #ifdef DEBUG_CONFLICT_SETS
   , conflictSetOrigin
 #endif
@@ -40,7 +41,7 @@ import Data.List (intercalate, sortBy)
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Function (on)
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 #ifdef DEBUG_CONFLICT_SETS
@@ -87,9 +88,20 @@ data Conflict =
     -- package and version.
   | VersionConflict QPN Ver
 
+    -- | The package represented by the variable was excluded by this
+    -- package's VersionRange constraint.
+  | VersionConflict2 QPN VersionRange2
+
     -- | Any other conflict.
-  | UnknownConflict
+  | OtherConflict
   deriving (Eq, Ord, Show)
+
+newtype VersionRange2 = VersionRange2 VR
+  deriving (Eq, Show)
+
+-- TODO: Fix this
+instance Ord VersionRange2 where
+  compare = compare `on` show
 
 instance Eq ConflictSet where
   (==) = (==) `on` conflictSetToMap
@@ -156,7 +168,7 @@ insert ::
 #endif
   Var QPN -> ConflictSet -> ConflictSet
 insert var cs = CS {
-      conflictSetToMap = M.insert var (S.singleton UnknownConflict) (conflictSetToMap cs)
+      conflictSetToMap = M.insert var (S.singleton OtherConflict) (conflictSetToMap cs)
 #ifdef DEBUG_CONFLICT_SETS
     , conflictSetOrigin = Node ?loc [conflictSetOrigin cs]
 #endif
@@ -185,7 +197,7 @@ singleton ::
 #endif
   Var QPN -> ConflictSet
 singleton var = CS {
-      conflictSetToMap = M.singleton var (S.singleton UnknownConflict)
+      conflictSetToMap = M.singleton var (S.singleton OtherConflict)
 #ifdef DEBUG_CONFLICT_SETS
     , conflictSetOrigin = Node ?loc []
 #endif
@@ -230,7 +242,7 @@ fromList ::
 #endif
   [Var QPN] -> ConflictSet
 fromList vars = CS {
-      conflictSetToMap = M.fromList [(var, S.singleton UnknownConflict) | var <- vars]
+      conflictSetToMap = M.fromList [(var, S.singleton OtherConflict) | var <- vars]
 #ifdef DEBUG_CONFLICT_SETS
     , conflictSetOrigin = Node ?loc []
 #endif

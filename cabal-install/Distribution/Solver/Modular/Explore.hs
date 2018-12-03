@@ -7,14 +7,18 @@ import qualified Distribution.Solver.Types.Progress as P
 
 import Data.Foldable as F
 import Data.List as L (foldl')
+import Data.Maybe (fromMaybe)
 import Data.Map.Strict as M
 import Data.Set as S
+
+import Distribution.Simple.Setup (asBool)
 
 import Distribution.Solver.Modular.Assignment
 import Distribution.Solver.Modular.Dependency
 import Distribution.Solver.Modular.Index
 import Distribution.Solver.Modular.Log
 import Distribution.Solver.Modular.Message
+import Distribution.Solver.Modular.Package
 import qualified Distribution.Solver.Modular.PSQ as P
 import qualified Distribution.Solver.Modular.ConflictSet as CS
 import Distribution.Solver.Modular.RetryLog
@@ -22,7 +26,8 @@ import Distribution.Solver.Modular.Tree
 import Distribution.Solver.Modular.Version
 import qualified Distribution.Solver.Modular.WeightedPSQ as W
 import Distribution.Solver.Types.PackagePath
-import Distribution.Solver.Types.Settings (EnableBackjumping(..), CountConflicts(..))
+import Distribution.Solver.Types.Settings
+import Distribution.Types.VersionRange (anyVersion)
 
 -- | This function takes the variable we're currently considering, a
 -- last conflict set and a list of children's logs. Each log yields
@@ -48,34 +53,59 @@ import Distribution.Solver.Types.Settings (EnableBackjumping(..), CountConflicts
 --
 backjump :: forall w k a . Maybe Int
          -> EnableBackjumping
-         -> (k -> S.Set CS.Conflict -> Bool)
-         -> (k -> ConflictSetLog a -> ConflictSetLog a)
+         -> FineGrainedConflicts
+         -> (k -> S.Set CS.Conflict -> Maybe ConflictSet)
+         -> (k -> ConflictSet -> ExploreState -> ConflictSetLog a)
          -> Var QPN
          -> ConflictSet
          -> W.WeightedPSQ w k (ExploreState -> ConflictSetLog a)
          -> ExploreState -> ConflictSetLog a
-backjump mbj (EnableBackjumping enableBj) couldResolveConflict logSkippedChoice var lastCS xs =
+backjump mbj enableBj fineGrainedConflicts couldResolveConflicts
+         logSkippedChoice var lastCS xs =
     F.foldr combine avoidGoal [(k, v) | (_, k, v) <- W.toList xs] CS.empty Nothing
   where
     combine :: (k, ExploreState -> ConflictSetLog a)
             -> (ConflictSet -> Maybe ConflictSet -> ExploreState -> ConflictSetLog a)
             ->  ConflictSet -> Maybe ConflictSet -> ExploreState -> ConflictSetLog a
-    combine (k, x) f csAcc previousCS es =
-        case previousCS of
-          Nothing -> retryNoSolution (x es) next
-          Just cs -> case CS.lookup var cs of
-                       Just c | couldResolveConflict k c -> retryNoSolution (x es) next
-                       _                                 -> logSkippedChoice k $ f csAcc previousCS es
+    combine (k, x) f csAcc mPreviousCS es =
+        case mPreviousCS of
+          Just previousCS
+            | asBool fineGrainedConflicts ->
+                case CS.lookup var previousCS of
+                  Just conflicts ->
+                    case couldResolveConflicts k conflicts of
+                      Nothing           -> retryNoSolution (x es) next
+                      Just newConflicts -> skipChoice (previousCS `CS.union` newConflicts)
+                  _              -> undefined  -- skipChoice previousCS
+          _                               -> retryNoSolution (x es) next
       where
         next :: ConflictSet -> ExploreState -> ConflictSetLog a
-        next !cs es' = if enableBj && not (var `CS.member` cs)
-                       then skipLoggingBackjump cs (Just cs) es'
+        next !cs es' = if asBool enableBj && not (var `CS.member` cs)
+                       then skipLoggingBackjump cs es'
                        else f (csAcc `CS.union` cs) (Just cs) es'
+
+        -- Skip the choice, because it can't resolve the confict.
+        skipChoice :: ConflictSet -> RetryLog Message IntermediateFailure a
+        skipChoice newCS =
+            retryWithBackjumpLimit (logSkippedChoice k newCS es) $ \cs' es' ->
+                -- Since this subtree will fail in the same way as the previous
+                -- subtree failed, the previous conflict set is also a valid
+                -- conflict set for this subtree. Using the previous conflict
+                -- set could even be better than calculating the current
+                -- subtree's conflict set for free, because it prevents the
+                -- current subtree from introducing more conflicts to the
+                -- conflict set. However, it also prevents the current subtree
+                -- from introducing a conflict that allows the solver to
+                -- backjump past this level.
+                f (csAcc `CS.union` cs') (Just cs') $
+                -- Update the conflict map with the previous conflict set, to
+                -- make up for skipping the whole subtree.
+                es' { esConflictMap = updateCM cs' (esConflictMap es') }
 
     -- This function represents the option to not choose a value for this goal.
     avoidGoal :: ConflictSet -> Maybe ConflictSet -> ExploreState -> ConflictSetLog a
-    avoidGoal cs previousCS !es =
-        logBackjump mbj (cs `CS.union` lastCS) previousCS $
+    avoidGoal cs _mPreviousCS !es =
+        logBackjump mbj (cs `CS.union` lastCS) $
 
         -- Use 'lastCS' below instead of 'cs' since we do not want to
         -- double-count the additionally accumulated conflicts.
@@ -84,14 +114,22 @@ backjump mbj (EnableBackjumping enableBj) couldResolveConflict logSkippedChoice 
     -- The solver does not count or log backjumps at levels where the conflict
     -- set does not contain the current variable. Otherwise, there would be many
     -- consecutive log messages about backjumping with the same conflict set.
-    skipLoggingBackjump :: ConflictSet -> Maybe ConflictSet -> ExploreState -> ConflictSetLog a
-    skipLoggingBackjump cs _previousCS es = fromProgress $ P.Fail (NoSolution cs es)
+    skipLoggingBackjump :: ConflictSet -> ExploreState -> ConflictSetLog a
+    skipLoggingBackjump cs es = fromProgress $ P.Fail (NoSolution cs es)
+
+retryWithBackjumpLimit :: ConflictSetLog a
+                       -> (ConflictSet -> ExploreState -> ConflictSetLog a)
+                       -> ConflictSetLog a
+retryWithBackjumpLimit lg next =
+    retry lg $ \case
+        BackjumpLimit    -> fromProgress (P.Fail BackjumpLimit)
+        NoSolution cs es -> next cs es
 
 -- | Creates a failing ConflictSetLog representing a backjump. It inserts a
 -- "backjumping" message, checks whether the backjump limit has been reached,
 -- and increments the backjump count.
-logBackjump :: Maybe Int -> ConflictSet -> Maybe ConflictSet -> ExploreState -> ConflictSetLog a
-logBackjump mbj cs _previousCS es =
+logBackjump :: Maybe Int -> ConflictSet -> ExploreState -> ConflictSetLog a
+logBackjump mbj cs es =
     failWith (Failure cs Backjump) $
         if reachedBjLimit (esBackjumps es)
         then BackjumpLimit
@@ -99,7 +137,7 @@ logBackjump mbj cs _previousCS es =
   where
     reachedBjLimit = case mbj of
                        Nothing    -> const False
-                       Just limit -> (== limit)
+                       Just limit -> (>= limit)
 
 -- | Like 'retry', except that it only applies the input function when the
 -- backjump limit has not been reached.
@@ -157,15 +195,16 @@ assign tree = cata go tree $ A M.empty M.empty M.empty
 
 -- | A tree traversal that simultaneously propagates conflict sets up
 -- the tree from the leaves and creates a log.
-exploreLog :: Maybe Int -> EnableBackjumping -> CountConflicts -> Index
+exploreLog :: Maybe Int -> EnableBackjumping -> CountConflicts -> FineGrainedConflicts -> Index
            -> Tree Assignment QGoalReason
            -> ConflictSetLog (Assignment, RevDepMap)
-exploreLog mbj enableBj (CountConflicts countConflicts) idx t = para go t initES
+exploreLog mbj enableBj (CountConflicts countConflicts) fineGrainedConflicts idx t =
+    para go t initES
   where
     getBestGoal' :: P.PSQ (Goal QPN) a -> ConflictMap -> (Goal QPN, a)
     getBestGoal'
-      | countConflicts = \ ts cm -> getBestGoal cm ts
-      | otherwise      = \ ts _  -> getFirstGoal ts
+      | asBool countConflicts = \ ts cm -> getBestGoal cm ts
+      | otherwise             = \ ts _  -> getFirstGoal ts
 
     go :: TreeF Assignment QGoalReason
                 (ExploreState -> ConflictSetLog (Assignment, RevDepMap), Tree Assignment QGoalReason)
@@ -175,17 +214,18 @@ exploreLog mbj enableBj (CountConflicts countConflicts) idx t = para go t initES
         in failWith (Failure c fr) (NoSolution c es')
     go (DoneF rdm a)                           = \ _   -> succeedWith Success (a, rdm)
     go (PChoiceF qpn _ gr       ts)            =
-      backjump mbj enableBj (couldResolveConflict qpn) (logSkippedPkg qpn) (P qpn) (avoidSet (P qpn) gr) $ -- try children in order,
+      backjump mbj enableBj fineGrainedConflicts (couldResolveConflicts qpn) (logSkippedPackage qpn)
+               (P qpn) (avoidSet (P qpn) gr) $ -- try children in order,
         W.mapWithKey                                -- when descending ...
           (\ k r es -> tryWith (TryP qpn k) (r es))
           (fmap fst ts)
     go (FChoiceF qfn _ gr _ _ _ ts)            =
-      backjump mbj enableBj (const $ const True) (const id) (F qfn) (avoidSet (F qfn) gr) $ -- try children in order,
+      backjump mbj enableBj fineGrainedConflicts (const $ const Nothing) (\_ cs es -> fromProgress $ P.Fail $ NoSolution cs es) (F qfn) (avoidSet (F qfn) gr) $ -- try children in order,
         W.mapWithKey                                -- when descending ...
           (\ k r es -> tryWith (TryF qfn k) (r es))
           (fmap fst ts)
     go (SChoiceF qsn _ gr _     ts)            =
-      backjump mbj enableBj (const $ const True) (const id) (S qsn) (avoidSet (S qsn) gr) $ -- try children in order,
+      backjump mbj enableBj fineGrainedConflicts (const $ const Nothing) (\_ cs es -> fromProgress $ P.Fail $ NoSolution cs es) (S qsn) (avoidSet (S qsn) gr) $ -- try children in order,
         W.mapWithKey                                -- when descending ...
           (\ k r es -> tryWith (TryS qsn k) (r es))
           (fmap fst ts)
@@ -199,7 +239,7 @@ exploreLog mbj enableBj (CountConflicts countConflicts) idx t = para go t initES
          -- backjump is not redundant is when the chosen goal is a failure node,
          -- so we log a backjump in that case.
          case tree of
-           Fail _ _ -> retryNoSolution (v es) $ (\cs -> logBackjump mbj cs Nothing)
+           Fail _ _ -> retryNoSolution (v es) $ logBackjump mbj
            _        -> v es
 
     initES = ES {
@@ -210,24 +250,38 @@ exploreLog mbj enableBj (CountConflicts countConflicts) idx t = para go t initES
     -- Is it possible for this package instance (QPN and POption) to resolve any
     -- of the conflicts that were caused by the previous instance? The default
     -- is true, because it is always safe to explore a package instance.
-    -- Skipping it is an optimization.
-    couldResolveConflict :: QPN -> POption -> S.Set CS.Conflict -> Bool
-    couldResolveConflict currentQPN@(Q _ pn) (POption i _) conflicts =
+    -- Skipping it is an optimization. If false, it returns a new conflict set
+    -- to be merged with the previous one.
+    couldResolveConflicts :: QPN -> POption -> S.Set CS.Conflict -> Maybe ConflictSet
+    couldResolveConflicts currentQPN@(Q _ pn) (POption i@(I v _) _) conflicts =
       let (PInfo deps _ _ _) = idx ! pn ! i
           qo = defaultQualifyOptions idx
           qdeps = qualifyDeps qo currentQPN deps
 
-          couldBeResolved :: CS.Conflict -> Bool
-          couldBeResolved CS.UnknownConflict = True
+          couldBeResolved :: CS.Conflict -> Maybe ConflictSet
+          couldBeResolved CS.OtherConflict = Nothing
           couldBeResolved (CS.GoalConflict qpn) =
-              F.null [() | Simple (LDep _ (Dep (PkgComponent qpn' _) _)) _ <- qdeps, qpn == qpn']
-          couldBeResolved (CS.VersionConflict qpn v) =
-              all (\vr -> checkVR vr v)
-                  [vr | Simple (LDep _ (Dep (PkgComponent qpn' _) (Constrained vr))) _ <- qdeps, qpn == qpn' ]
-      in any couldBeResolved (S.toList conflicts)
+              if F.null [() | Simple (LDep _ (Dep (PkgComponent qpn' _) _)) _ <- qdeps, qpn == qpn']
+              then Nothing
+              else Just CS.empty
+          couldBeResolved (CS.VersionConflict qpn v') =
+              let vrs = [vr | Simple (LDep _ (Dep (PkgComponent qpn' _) (Constrained vr))) _ <- qdeps, qpn == qpn' ]
+                  vr' = L.foldl' (.&&.) anyVersion vrs
+              in if checkVR vr' v'
+                 then Nothing
+                 else Just $ CS.singletonWithConflict (P qpn) $
+                      CS.VersionConflict2 currentQPN (CS.VersionRange2 vr')
+          couldBeResolved (CS.VersionConflict2 qpn (CS.VersionRange2 vr)) =
+              if checkVR vr v
+              then Nothing
+              else Just $ CS.singletonWithConflict (P qpn) (CS.VersionConflict currentQPN v)
+      in fmap CS.unions $ traverse couldBeResolved (S.toList conflicts)
 
-    logSkippedPkg :: QPN -> POption -> ConflictSetLog a -> ConflictSetLog a
-    logSkippedPkg qpn pOption = continueWith (Skip qpn pOption)
+    logSkippedPackage :: QPN -> POption -> ConflictSet -> ExploreState -> ConflictSetLog a
+    logSkippedPackage qpn pOption cs es =
+        tryWith (TryP qpn pOption) $
+        failWith (Skip qpn pOption (fromMaybe S.empty $ CS.lookup (P qpn) cs)) $
+        NoSolution cs es  -- { esBackjumps = esBackjumps es + 1 }
 
 -- | Build a conflict set corresponding to the (virtual) option not to
 -- choose a solution for a goal at all.
@@ -266,12 +320,15 @@ avoidSet var gr =
 -- backtracking is completely disabled.
 backjumpAndExplore :: Maybe Int
                    -> EnableBackjumping
+                   -> FineGrainedConflicts
                    -> CountConflicts
                    -> Index
                    -> Tree d QGoalReason
                    -> RetryLog Message SolverFailure (Assignment, RevDepMap)
-backjumpAndExplore mbj enableBj countConflicts idx =
-    mapFailure convertFailure . exploreLog mbj enableBj countConflicts idx . assign
+backjumpAndExplore mbj enableBj fineGrainedConflicts countConflicts idx =
+    mapFailure convertFailure
+  . exploreLog mbj enableBj countConflicts fineGrainedConflicts idx
+  . assign
   where
     convertFailure (NoSolution cs es) = ExhaustiveSearch cs (esConflictMap es)
     convertFailure BackjumpLimit      = BackjumpLimitReached

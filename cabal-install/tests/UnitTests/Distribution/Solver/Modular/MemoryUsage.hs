@@ -22,7 +22,9 @@ tests = [
 -- the size of the tree.
 basicTest :: String -> SolverTest
 basicTest name =
-    disableBackjumping $ mkTest pkgs name ["target"] anySolverFailure
+    disableBackjumping $
+    disableFineGrainedConflicts $
+    mkTest pkgs name ["target"] anySolverFailure
   where
     n :: Int
     n = 18
@@ -44,6 +46,7 @@ basicTest name =
 flagsTest :: String -> SolverTest
 flagsTest name =
     disableBackjumping $
+    disableFineGrainedConflicts $
     goalOrder orderedFlags $ mkTest pkgs name ["pkg"] anySolverFailure
   where
     n :: Int
@@ -77,6 +80,7 @@ flagsTest name =
 issue2899 :: String -> SolverTest
 issue2899 name =
     disableBackjumping $
+    disableFineGrainedConflicts $
     goalOrder goals $ mkTest pkgs name ["target"] anySolverFailure
   where
     n :: Int

@@ -451,12 +451,15 @@ merge (MergedDepFixed comp1 vs1 i1) (PkgDep vs2 (PkgComponent p comp2) ci@(Fixed
            , ( ConflictingDep vs1 (PkgComponent p comp1) (Fixed i1)
              , ConflictingDep vs2 (PkgComponent p comp2) ci ) )
 
-merge (MergedDepFixed comp1 vs1 i@(I v _)) (PkgDep vs2 (PkgComponent p comp2) ci@(Constrained vr))
+merge (MergedDepFixed comp1 vs1@(DependencyReason p' _ _) i@(I v _)) (PkgDep vs2@(DependencyReason p2' fs ss) (PkgComponent p comp2) ci@(Constrained vr))
   | checkVR vr v = Right $ MergedDepFixed comp1 vs1 i
   | otherwise    =
-      Left ( dependencyReasonToCS vs1 `CS.union` dependencyReasonToCSWithConflict p v vs2
-           , ( ConflictingDep vs1 (PkgComponent p comp1) (Fixed i)
-             , ConflictingDep vs2 (PkgComponent p comp2) ci ) )
+      let c1 = if p' == p && M.null fs && S.null ss
+               then dependencyReasonToCSWithConflict2 p2' (CS.VersionRange2 vr) vs1
+               else dependencyReasonToCS vs1
+      in Left ( c1 `CS.union` dependencyReasonToCSWithConflict p v vs2
+              , ( ConflictingDep vs1 (PkgComponent p comp1) (Fixed i)
+                , ConflictingDep vs2 (PkgComponent p comp2) ci ) )
 
 merge (MergedDepConstrained vrOrigins) (PkgDep vs2 (PkgComponent p comp2) ci@(Fixed i@(I v _))) =
     go vrOrigins -- I tried "reverse vrOrigins" here, but it seems to slow things down ...

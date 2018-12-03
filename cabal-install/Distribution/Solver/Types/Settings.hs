@@ -11,6 +11,7 @@ module Distribution.Solver.Types.Settings
     , OnlyConstrained(..)
     , EnableBackjumping(..)
     , CountConflicts(..)
+    , FineGrainedConflicts(..)
     , SolveExecutables(..)
     ) where
 
@@ -27,6 +28,9 @@ newtype ReorderGoals = ReorderGoals Bool
   deriving (BooleanFlag, Eq, Generic, Show)
 
 newtype CountConflicts = CountConflicts Bool
+  deriving (BooleanFlag, Eq, Generic, Show)
+
+newtype FineGrainedConflicts = FineGrainedConflicts Bool
   deriving (BooleanFlag, Eq, Generic, Show)
 
 newtype MinimizeConflictSet = MinimizeConflictSet Bool
@@ -62,6 +66,7 @@ newtype SolveExecutables = SolveExecutables Bool
 
 instance Binary ReorderGoals
 instance Binary CountConflicts
+instance Binary FineGrainedConflicts
 instance Binary IndependentGoals
 instance Binary MinimizeConflictSet
 instance Binary AvoidReinstalls
