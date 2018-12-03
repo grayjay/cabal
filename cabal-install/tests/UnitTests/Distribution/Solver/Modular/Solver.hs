@@ -1700,13 +1700,14 @@ testSkippedVersionLogMessage6 testName =
       , "[__2] next goal: C (dependency of A)"
       , "[__2] rejecting: C-1.0.0 (conflict: B==2.0.0, C => B==4.0.0)"
       , "[__2] fail (backjumping, conflict set: A, B, C)"
-      , "[__1] rejecting: B-1.0.0 (conflict: A => B==2.0.0)"
+      , "[__1] skipping: B-1.0.0 (has the same characteristics that caused "
+         ++ "the previous version to fail: none)"
       , "[__1] fail (backjumping, conflict set: A, B, C)"
 
       -- doesn't mention B-2.0.0, even though it conflicted with C
       , "[__0] skipping: A-1.0.0 (has the same characteristics that caused the "
-         ++ "previous version to fail: depends on B but excludes versions "
-         ++ "3.0.0, 1.0.0; depends on C)"
+         ++ "previous version to fail: depends on B but excludes version "
+         ++ "3.0.0; depends on C)"
 
       , "[__0] fail (backjumping, conflict set: A, B, C)"
       ]
