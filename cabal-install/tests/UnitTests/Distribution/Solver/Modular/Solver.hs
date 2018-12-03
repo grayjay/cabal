@@ -1712,6 +1712,7 @@ testSkippedVersionLogMessage6 testName =
       , "[__0] fail (backjumping, conflict set: A, B, C)"
       ]
 
+-- Tests a bug from the first implementation
 installed :: String -> TestTree
 installed testName = runTest $ setVerbose $ goalOrder goals $
                      mkTest db testName ["B", "A"] $

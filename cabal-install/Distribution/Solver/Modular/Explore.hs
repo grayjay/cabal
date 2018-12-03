@@ -88,6 +88,9 @@ backjump mbj enableBj fineGrainedConflicts couldResolveConflicts
         skipChoice :: ConflictSet -> RetryLog Message IntermediateFailure a
         skipChoice newCS =
             retryWithBackjumpLimit (logSkippedChoice k newCS es) $ \cs' es' ->
+                -- TODO: Update this comment to explain how the previous
+                -- conflict set needs to be updated.
+
                 -- Since this subtree will fail in the same way as the previous
                 -- subtree failed, the previous conflict set is also a valid
                 -- conflict set for this subtree. Using the previous conflict
