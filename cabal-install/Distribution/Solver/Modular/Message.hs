@@ -141,24 +141,36 @@ showConflicts conflicts =
     mergeConflicts = M.fromListWith mergeConflict . mapMaybe toMergedConflict . S.toList
       where
         mergeConflict :: MergedPackageConflict -> MergedPackageConflict -> MergedPackageConflict
-        mergeConflict (MergedPackageConflict goalConflict1 vs1) (MergedPackageConflict goalConflict2 vs2) =
-            MergedPackageConflict (goalConflict1 || goalConflict2) $ L.nub (vs1 ++ vs2)
+        mergeConflict (MergedPackageConstraint vs1) (MergedPackageConstraint vs2) =
+            MergedPackageConstraint $ L.nub (vs1 ++ vs2)
+        mergeConflict (MergedPackageDependency vs1) (MergedPackageConstraint vs2) =
+            MergedPackageDependency $ L.nub (vs1 ++ vs2)
+        mergeConflict (MergedPackageConstraint vs1) (MergedPackageDependency vs2) =
+            MergedPackageDependency $ L.nub (vs1 ++ vs2)
+        mergeConflict (MergedPackageDependency vs1) (MergedPackageDependency vs2) =
+            MergedPackageDependency $ L.nub (vs1 ++ vs2)
+        mergeConflict (MergedPackageReverseDependency vr1) (MergedPackageReverseDependency vr2) =
+            MergedPackageReverseDependency $ simplifyVR $ vr1 .||. vr2
 
         toMergedConflict :: CS.Conflict -> Maybe (QPN, MergedPackageConflict)
         toMergedConflict CS.OtherConflict = Nothing
-        toMergedConflict (CS.VersionConflict2 qpn (CS.VersionRange2 vr)) = Nothing -- TODO: Fix this
-        toMergedConflict (CS.GoalConflict qpn) = Just (qpn, MergedPackageConflict True [])
-        toMergedConflict (CS.VersionConflict qpn v) = Just (qpn, MergedPackageConflict False [v])
+        toMergedConflict (CS.VersionConflict2 qpn (CS.VersionRange2 vr)) =
+            Just (qpn, MergedPackageReverseDependency vr)
+        toMergedConflict (CS.GoalConflict qpn) = Just (qpn, MergedPackageDependency [])
+        toMergedConflict (CS.VersionConflict qpn v) = Just (qpn, MergedPackageConstraint [v])
 
     showConflict :: QPN -> MergedPackageConflict -> String
     showConflict qpn conflict =
-      if hasGoalConflict conflict
-      then "depends on " ++ showQPN qpn ++
-               (if null (versionConflicts conflict)
-                then ""
-                else " but excludes " ++ showVersions (versionConflicts conflict))
-      else "excludes " ++ showQPN qpn ++ " "
-            ++ showVersions (versionConflicts conflict)
+      case conflict of
+        MergedPackageDependency vers ->
+          "depends on '" ++ showQPN qpn ++ "'" ++
+              (if null vers
+               then ""
+               else " but excludes " ++ showVersions vers)
+        MergedPackageConstraint vers ->
+          "excludes '" ++ showQPN qpn ++ "' " ++ showVersions vers
+        MergedPackageReverseDependency vr ->
+          "excluded by constraint '" ++ showVR vr ++ "' from '" ++ showQPN qpn ++ "'"
       where
         showVersions []  = "no versions"
         showVersions [v] = "version " ++ showVer v
@@ -166,10 +178,10 @@ showConflicts conflicts =
 
 -- | All conflicts related to one package, used for simplifying the display of
 -- a 'Set CS.Conflict'.
-data MergedPackageConflict = MergedPackageConflict {
-    hasGoalConflict  :: Bool
-  , versionConflicts :: [Ver]
-  }
+data MergedPackageConflict =
+    MergedPackageConstraint [Ver]
+  | MergedPackageDependency [Ver]
+  | MergedPackageReverseDependency VR
 
 showQPNPOpt :: QPN -> POption -> String
 showQPNPOpt qpn@(Q _pp pn) (POption i linkedTo) =

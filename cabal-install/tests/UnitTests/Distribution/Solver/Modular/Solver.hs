@@ -1459,9 +1459,7 @@ testMinimizeConflictSet testName =
       , "Trying to remove variable \"A\" from the conflict set."
       , "Failed to remove \"A\" from the conflict set. Continuing with {A, B, C, D}."
       , "Trying to remove variable \"B\" from the conflict set."
-      , "Successfully removed \"B\" from the conflict set. Continuing with {A, C, D}."
-      , "Trying to remove variable \"C\" from the conflict set."
-      , "Successfully removed \"C\" from the conflict set. Continuing with {A, D}."
+      , "Successfully removed \"B\" from the conflict set. Continuing with {A, D}."
       , "Trying to remove variable \"D\" from the conflict set."
       , "Failed to remove \"D\" from the conflict set. Continuing with {A, D}."
       ]
@@ -1473,7 +1471,7 @@ testMinimizeConflictSet testName =
      ++ "[__1] rejecting: D-1.0.0 (conflict: A => D==2.0.0)\n"
      ++ "[__1] fail (backjumping, conflict set: A, D)\n"
      ++ "After searching the rest of the dependency tree exhaustively, these "
-          ++ "were the goals I've had most trouble fulfilling: A (7), D (6)"
+          ++ "were the goals I've had most trouble fulfilling: A (5), D (4)"
 
     goals :: [ExampleVar]
     goals = [P QualNone pkg | pkg <- ["A", "B", "C", "D"]]
@@ -1525,7 +1523,7 @@ testSkippedVersionLogMessage testName =
       , "[__2] rejecting: C-1.0.0 (conflict: B => C==4.0.0)"
       , "[__2] fail (backjumping, conflict set: B, C)"
       , "[__1] skipping: B-3.0.0, B-2.0.0 (has the same characteristics that "
-         ++ "caused the previous version to fail: depends on C but excludes "
+         ++ "caused the previous version to fail: depends on 'C' but excludes "
          ++ "version 1.0.0)"
       , "[__1] trying: B-1.0.0"
       , "[__2] next goal: C (dependency of B)"
@@ -1558,7 +1556,7 @@ testSkippedVersionLogMessage2 testName =
       , "[__2] fail (backjumping, conflict set: B, unknown2)"
       , "[__1] fail (backjumping, conflict set: A, B, unknown1, unknown2)"
       , "[__0] skipping: A-2.0.0 (has the same characteristics that caused the "
-         ++ "previous version to fail: depends on B)"
+         ++ "previous version to fail: depends on 'B')"
       , "[__0] trying: A-1.0.0"
       , "[__1] next goal: C (dependency of A)"
       , "[__1] trying: C-1.0.0"
@@ -1595,7 +1593,7 @@ testSkippedVersionLogMessage3 testName =
       , "[__2] fail (backjumping, conflict set: A, B, C, D)"
       , "[__1] fail (backjumping, conflict set: A, B, C, D)"
       , "[__0] skipping: A-2.0.0 (has the same characteristics that caused the "
-         ++ "previous version to fail: depends on B; depends on C)"
+         ++ "previous version to fail: depends on 'B'; depends on 'C')"
 
       -- Tries A-1, because it resolves one issue
       , "[__0] trying: A-1.0.0"
@@ -1631,7 +1629,7 @@ testSkippedVersionLogMessage4 testName =
 
       -- skips version instead of checking for (possibly different) conflict
       , "[__2] skipping: C-1.0.0 (has the same characteristics that caused the "
-         ++ "previous version to fail: excludes B version 3.0.0)"
+         ++ "previous version to fail: excludes 'B' version 3.0.0)"
 
       , "[__2] fail (backjumping, conflict set: A, B, C)"
       , "[__1] trying: B-2.0.0"
@@ -1668,7 +1666,7 @@ testSkippedVersionLogMessage5 testName =
 
       -- doesn't mention confict with B, similar to backjumping
       , "[__0] skipping: A-2.0.0 (has the same characteristics that caused the "
-         ++ "previous version to fail: depends on C but excludes version 2.0.0)"
+         ++ "previous version to fail: depends on 'C' but excludes version 2.0.0)"
       , "[__0] trying: A-1.0.0"
       , "[__1] next goal: C (dependency of A)"
       , "[__1] trying: C-2.0.0"
@@ -1701,13 +1699,13 @@ testSkippedVersionLogMessage6 testName =
       , "[__2] rejecting: C-1.0.0 (conflict: B==2.0.0, C => B==4.0.0)"
       , "[__2] fail (backjumping, conflict set: A, B, C)"
       , "[__1] skipping: B-1.0.0 (has the same characteristics that caused "
-         ++ "the previous version to fail: none)"
+         ++ "the previous version to fail: excluded by constraint '==4.0.0' from 'C')"
       , "[__1] fail (backjumping, conflict set: A, B, C)"
 
       -- doesn't mention B-2.0.0, even though it conflicted with C
       , "[__0] skipping: A-1.0.0 (has the same characteristics that caused the "
-         ++ "previous version to fail: depends on B but excludes version "
-         ++ "3.0.0; depends on C)"
+         ++ "previous version to fail: depends on 'B' but excludes version "
+         ++ "3.0.0; depends on 'C')"
 
       , "[__0] fail (backjumping, conflict set: A, B, C)"
       ]
