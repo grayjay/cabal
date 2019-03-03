@@ -455,9 +455,9 @@ merge (MergedDepFixed comp1 vs1@(DependencyReason p' _ _) i@(I v _)) (PkgDep vs2
   | checkVR vr v = Right $ MergedDepFixed comp1 vs1 i
   | otherwise    =
       let c1 = if p' == p && M.null fs && S.null ss
-               then dependencyReasonToCSWithConflict2 p2' (CS.VersionRange2 vr) vs1
+               then dependencyReasonToCSWithConflict p2' (CS.OrderedVersionRange vr) vs1
                else dependencyReasonToCS vs1
-      in Left ( c1 `CS.union` dependencyReasonToCSWithConflict p v vs2
+      in Left ( c1 `CS.union` dependencyReasonToCSWithConstraintConflict p v vs2
               , ( ConflictingDep vs1 (PkgComponent p comp1) (Fixed i)
                 , ConflictingDep vs2 (PkgComponent p comp2) ci ) )
 
@@ -469,7 +469,7 @@ merge (MergedDepConstrained vrOrigins) (PkgDep vs2 (PkgComponent p comp2) ci@(Fi
     go ((vr, comp1, vs1) : vros)
        | checkVR vr v = go vros
        | otherwise    =
-           Left ( dependencyReasonToCSWithConflict p v vs1 `CS.union` dependencyReasonToCS vs2
+           Left ( dependencyReasonToCSWithConstraintConflict p v vs1 `CS.union` dependencyReasonToCS vs2
                 , ( ConflictingDep vs1 (PkgComponent p comp1) (Constrained vr)
                   , ConflictingDep vs2 (PkgComponent p comp2) ci ) )
 

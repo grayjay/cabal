@@ -149,15 +149,17 @@ showConflicts conflicts =
             MergedPackageDependency $ L.nub (vs1 ++ vs2)
         mergeConflict (MergedPackageDependency vs1) (MergedPackageDependency vs2) =
             MergedPackageDependency $ L.nub (vs1 ++ vs2)
-        mergeConflict (MergedPackageReverseDependency vr1) (MergedPackageReverseDependency vr2) =
-            MergedPackageReverseDependency $ simplifyVR $ vr1 .||. vr2
+        mergeConflict ( MergedPackageReverseDependency vr1) (MergedPackageReverseDependency vr2) =
+            MergedPackageReverseDependency $ vr1 .||. vr2
 
         toMergedConflict :: CS.Conflict -> Maybe (QPN, MergedPackageConflict)
         toMergedConflict CS.OtherConflict = Nothing
-        toMergedConflict (CS.VersionConflict2 qpn (CS.VersionRange2 vr)) =
+        toMergedConflict (CS.VersionConflict qpn (CS.OrderedVersionRange vr)) =
             Just (qpn, MergedPackageReverseDependency vr)
-        toMergedConflict (CS.GoalConflict qpn) = Just (qpn, MergedPackageDependency [])
-        toMergedConflict (CS.VersionConflict qpn v) = Just (qpn, MergedPackageConstraint [v])
+        toMergedConflict (CS.GoalConflict qpn) =
+            Just (qpn, MergedPackageDependency [])
+        toMergedConflict (CS.VersionConstraintConflict qpn v) =
+            Just (qpn, MergedPackageConstraint [v])
 
     showConflict :: QPN -> MergedPackageConflict -> String
     showConflict qpn conflict =

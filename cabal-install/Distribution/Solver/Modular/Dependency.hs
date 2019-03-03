@@ -35,8 +35,8 @@ module Distribution.Solver.Modular.Dependency (
   , goalReasonToCS
   , goalReasonToCSWithConflict
   , dependencyReasonToCS
+  , dependencyReasonToCSWithConstraintConflict
   , dependencyReasonToCSWithConflict
-  , dependencyReasonToCSWithConflict2
   ) where
 
 import Prelude ()
@@ -307,12 +307,18 @@ dependencyReasonToCS (DependencyReason qpn flags stanzas) =
     stanzaToVar :: Stanza -> Var QPN
     stanzaToVar = S . SN qpn
 
-dependencyReasonToCSWithConflict :: QPN -> Ver -> DependencyReason QPN -> ConflictSet
-dependencyReasonToCSWithConflict depQpn v dr@(DependencyReason qpn flags stanzas)
+dependencyReasonToCSWithConstraintConflict :: QPN
+                                           -> Ver
+                                           -> DependencyReason QPN
+                                           -> ConflictSet
+dependencyReasonToCSWithConstraintConflict depQpn v dr@(DependencyReason qpn flags stanzas)
   | M.null flags && S.null stanzas =
-    CS.singletonWithConflict (P qpn) $ CS.VersionConflict depQpn v
+    CS.singletonWithConflict (P qpn) $ CS.VersionConstraintConflict depQpn v
   | otherwise = dependencyReasonToCS dr
 
-dependencyReasonToCSWithConflict2 :: QPN -> CS.VersionRange2 -> DependencyReason QPN -> ConflictSet
-dependencyReasonToCSWithConflict2 depQPN vr (DependencyReason qpn _ _) =
-    CS.singletonWithConflict (P qpn) $ CS.VersionConflict2 depQPN vr
+dependencyReasonToCSWithConflict :: QPN
+                                 -> CS.OrderedVersionRange
+                                 -> DependencyReason QPN
+                                 -> ConflictSet
+dependencyReasonToCSWithConflict depQPN vr (DependencyReason qpn _ _) =
+    CS.singletonWithConflict (P qpn) $ CS.VersionConflict depQPN vr

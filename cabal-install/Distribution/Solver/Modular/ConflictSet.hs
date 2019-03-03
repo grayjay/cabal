@@ -12,7 +12,7 @@ module Distribution.Solver.Modular.ConflictSet (
     ConflictSet -- opaque
   , Conflict(..)
   , ConflictMap
-  , VersionRange2(..)
+  , OrderedVersionRange(..)
 #ifdef DEBUG_CONFLICT_SETS
   , conflictSetOrigin
 #endif
@@ -54,11 +54,8 @@ import Distribution.Solver.Modular.Version
 import Distribution.Solver.Types.PackagePath
 
 -- | The set of variables involved in a solver conflict
---
--- Since these variables should be preprocessed in some way, this type is
--- kept abstract.
 data ConflictSet = CS {
-    -- | The set of variables involved on the conflict
+    -- | The set of variables involved in the conflict
     conflictSetToMap :: !(Map (Var QPN) (Set Conflict))
 
 #ifdef DEBUG_CONFLICT_SETS
@@ -81,26 +78,33 @@ data ConflictSet = CS {
 -- conflict. This information can be used to determine whether a second value
 -- for that variable will lead to the same conflict.
 data Conflict =
-    -- | The variable introduced a problematic package goal.
+    -- | The conflict set variable represents a package which depends on the
+    -- specified problematic package. For example, the conflict set entry
+    -- '(P x, GoalConflict y)' means that package x introduced package y, and y
+    -- led to a conflict.
     GoalConflict QPN
 
-    -- | A constraint in the package represented by the variable excluded this
-    -- package and version.
-  | VersionConflict QPN Ver
+    -- | The conflict set variable represents a package with a constraint that
+    -- excluded the specified package and version. For example, the conflict set
+    -- entry '(P x, VersionConstraintConflict y (mkVersion [2, 0]))' means that
+    -- package x's constraint on y excluded y-2.0.
+  | VersionConstraintConflict QPN Ver
 
-    -- | The package represented by the variable was excluded by this
-    -- package's VersionRange constraint.
-  | VersionConflict2 QPN VersionRange2
+    -- | The conflict set variable represents a package that was excluded by a
+    -- constraint from the specified package. For example, the conflict set
+    -- entry '(P x, VersionConflict y (thisVersion (mkVersion [2, 0])))' means
+    -- that package y's constraint 'x == 2.0' excluded some versions of x.
+  | VersionConflict QPN OrderedVersionRange
 
     -- | Any other conflict.
   | OtherConflict
   deriving (Eq, Ord, Show)
 
-newtype VersionRange2 = VersionRange2 VR
+newtype OrderedVersionRange = OrderedVersionRange VR
   deriving (Eq, Show)
 
--- TODO: Fix this
-instance Ord VersionRange2 where
+-- TODO: Avoid converting the version ranges to strings.
+instance Ord OrderedVersionRange where
   compare = compare `on` show
 
 instance Eq ConflictSet where

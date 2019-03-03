@@ -267,17 +267,17 @@ exploreLog mbj enableBj (CountConflicts countConflicts) fineGrainedConflicts idx
               if F.null [() | Simple (LDep _ (Dep (PkgComponent qpn' _) _)) _ <- qdeps, qpn == qpn']
               then Nothing
               else Just CS.empty
-          couldBeResolved (CS.VersionConflict qpn v') =
+          couldBeResolved (CS.VersionConstraintConflict qpn v') =
               let vrs = [vr | Simple (LDep _ (Dep (PkgComponent qpn' _) (Constrained vr))) _ <- qdeps, qpn == qpn' ]
                   vr' = L.foldl' (.&&.) anyVersion vrs
               in if checkVR vr' v'
                  then Nothing
                  else Just $ CS.singletonWithConflict (P qpn) $
-                      CS.VersionConflict2 currentQPN (CS.VersionRange2 vr')
-          couldBeResolved (CS.VersionConflict2 qpn (CS.VersionRange2 vr)) =
+                      CS.VersionConflict currentQPN (CS.OrderedVersionRange vr')
+          couldBeResolved (CS.VersionConflict qpn (CS.OrderedVersionRange vr)) =
               if checkVR vr v
               then Nothing
-              else Just $ CS.singletonWithConflict (P qpn) (CS.VersionConflict currentQPN v)
+              else Just $ CS.singletonWithConflict (P qpn) (CS.VersionConstraintConflict currentQPN v)
       in fmap CS.unions $ traverse couldBeResolved (S.toList conflicts)
 
     logSkippedPackage :: QPN -> POption -> ConflictSet -> ExploreState -> ConflictSetLog a

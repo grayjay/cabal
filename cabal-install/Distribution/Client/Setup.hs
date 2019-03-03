@@ -2829,7 +2829,7 @@ optionSolverFlags showOrParseArgs getmbj setmbj getrg setrg getcc setcc
       (setcc . fmap CountConflicts)
       (yesNoOpt showOrParseArgs)
   , option [] ["fine-grained-conflicts"]
-      "Store more information about conflicts in conflict sets, as an optimization."
+      "Store more information about conflicts in conflict sets, as an optimization (default)."
       (fmap asBool . getfgc)
       (setfgc . fmap FineGrainedConflicts)
       (yesNoOpt showOrParseArgs)
